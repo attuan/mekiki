@@ -169,7 +169,7 @@ P0.5 を P1 より先に置いたのは、**LLM を使わない到達点（TabPF
 
 | ファイル | 内容 |
 |---|---|
-| `2026-09-02-feature-fallback-vehicles.md` | 機能A の LLM フォールバックを Craigslist に移植したが、測定として成立しなかった記録 |
+| `2026-09-02-feature-fallback-vehicles.md` | 機能A の LLM フォールバックを Craigslist で測る。1度目は成立せず、正解を `type` に替えて成立した |
 
 ### 通しのドキュメント
 
