@@ -19,7 +19,7 @@ import pandas as pd
 from lightgbm import LGBMRegressor
 from sklearn.decomposition import PCA
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from eval_protocol import (  # noqa: E402
     DATA, EXTRA_CAT, EXTRA_NUM, LEGACY_BOOL, LEGACY_CAT, LEGACY_NUM, SEED,

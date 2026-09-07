@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from eval_protocol import (  # noqa: E402
     LEGACY_BOOL, LEGACY_CAT, LEGACY_NUM, TARGET, cross_validate, load_dataset,
 )

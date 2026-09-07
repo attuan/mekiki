@@ -39,7 +39,7 @@ import pandas as pd
 os.environ.setdefault("TABPFN_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("TABPFN_ALLOW_CPU_LARGE_DATASET", "1")
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from eval_protocol import (  # noqa: E402
     DATA, SEED, TARGET, cross_validate, load_dataset,

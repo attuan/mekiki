@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMRegressor
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
