@@ -30,3 +30,8 @@ CLAUDE.local.md
 
 # Excel の一時ロックファイル
 ~$*
+
+# インストーラの一時ファイル（AWS CLI など）。誤って 2075c3b でコミットしたことがある
+awscliv2.zip
+AWSCLIV2.pkg
+sessionmanager-bundle*

@@ -2,13 +2,13 @@
 
 設計書の「What runs per row」（01〜05）をそのまま実装したもの。
 
-  01 Ground truth      … 手元の正解ラベル。無い場合の扱いは下記（PRD §7-1 の論点）
+  01 Ground truth      … 手元の正解ラベル。無い場合の扱いは下記（PRD 機能A の 01）
   02 Embedding         … 1行1ベクトル。同じ文字列は二度計算しない（キャッシュ）
   03 Nearest examples  … 近傍の類似度とラベルの一致度から confidence を出す
   04 Confident?        … 閾値以上ならその場で返す。LLM は呼ばない
   05 Uncertain?        … 閾値未満は fallback へ。既定はレビュー待ちに積むだけ
 
-**01 の正解ラベルをどうするか**は未決事項（PRD §7-1 / 月曜アジェンダ B-3）なので、
+**01 の正解ラベルをどうするか**は未決（PRD 機能A の 01「教師ラベル」）なので、
 このクラスは3つの入口を用意して**どれを選んだかが呼び出し側に見える**ようにした。
 
   (a) 利用者がラベルを渡す        … `fit(X, y)` または `Feature(labels="列名")`
@@ -56,7 +56,7 @@ class Feature:
         この confidence を下回った行を 05（フォールバック）に回す。
     escalate_rate : float | None
         「confidence が低い順に何割を回すか」で指定する。threshold より優先される。
-        **費用の上限が決まっていない段階（PRD §7-9）ではこちらの方が実務的**で、
+        **費用の上限が決まっていない段階ではこちらの方が実務的**で、
         「予算内に収まる割合」から逆算できる。設計書のスライダーに相当する。
     on_uncertain : str
         "keep" なら分類器の推測を残す（来歴には needs_review と記録）。
@@ -144,7 +144,7 @@ class Feature:
             "  (a) fit(X, y) か Feature(labels='列名') でラベルを渡す\n"
             "  (b) values=[...] を渡して値の名前を起点にする（ゼロショット）\n"
             "  (c) type='embedding' にしてラベルなしで埋め込み列を得る\n"
-            "のいずれかが要ります。どれを既定にするかは未決事項（PRD §7-1）。")
+            "のいずれかが要ります。どれを既定にするかは未決（PRD 機能A の 01「教師ラベル」）。")
 
     # --- fit / transform -----------------------------------------------
 
@@ -164,7 +164,7 @@ class Feature:
             if not mask.any():
                 raise UnfoldError(
                     "渡されたラベルが全て欠損です。機能A は正解を1件も持たずには"
-                    "近傍分類できません（PRD §7-1）。")
+                    "近傍分類できません（PRD 機能A の 01「教師ラベル」）。")
             ref_texts = texts[mask.to_numpy()].reset_index(drop=True)
             ref_labels = lab[mask].astype(str).reset_index(drop=True)
             ref_origin = np.array(["human"] * len(ref_labels))

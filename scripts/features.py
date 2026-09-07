@@ -48,7 +48,7 @@ def numeric_frame(df: pd.DataFrame, num: list[str], boo: list[str]) -> pd.DataFr
 def as_category(train: pd.DataFrame, test: pd.DataFrame, cols: list[str]):
     """train に出た水準だけをカテゴリとして固定する。
 
-    test にしか無い水準（train に無かったグレード・車種名）は NaN になり、
+    test にしか無い水準（train に無かった値）は NaN になり、
     LightGBM は欠損として扱う。train を見て決めるのが原則。
     """
     tr, te = train[cols].copy(), test[cols].copy()

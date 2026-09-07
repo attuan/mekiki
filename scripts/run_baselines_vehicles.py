@@ -1,25 +1,31 @@
-"""ベースライン（複数車種）— シエンタで引いた線を Craigslist 20万件で引き直す。
+"""ベースライン（Craigslist 複数車種）— `model` 列の扱い方を6通り比べる。
 
-docs/2026-08-29-baseline.md の宿題への回答。シエンタ（単一車種）では
-「グレード名」を正規表現で抜けてしまったので、埋め込みや LLM を使う動機が出なかった。
-複数車種では非構造テキストの表記が破綻するはずで、そこが unfold 機能A の本番になる。
+**問い**: 出品者が自由に書いた車種の記述（`model`, 19,739種類）を、
+どう表現すれば価格予測に効くか。
 
-対応関係:
+このデータの `model` は、選択肢から選ばせた列ではなく1行の自由入力である。
 
-    シエンタの「グレード名（116水準・タイトルから正規表現で抽出）」
-      ↓
-    Craigslist の「車種名 model（19,739水準・自由記述）」
+    'f-150 raptor arizona raptor*rust free*icon level kit*tech pkg*...'
+    '2500 slt / quad cab / 4x4 / leather / 5.9 l high output / ...'
+    'x5 3.0i awd 126k miles 3.0l v6 pano roof heated leather'
+
+車種の芯・グレード・装備・宣伝文が区切りも語順も揃わないまま混ざっていて、
+6割は1回しか出てこない。カテゴリとして持てば未知の値だらけになり、
+人手のルールで正規化すれば書き切れない。ここが unfold 機能A の本番になる。
 
 はしご:
 
-    0  中央値                     予測しない場合の下限
-    A1 線形回帰・構造化列         従来手法の再現。車種名を使わない
-    A2 LightGBM・構造化列         モデルを木に替えただけの効果
-    B1 + 車種名そのまま           19,739水準をそのままカテゴリに突っ込む
-    B2 + 車種名を手書きルールで正規化   シエンタでの「正規表現で抽出」に相当
-    C1 + 車種名の単語TF-IDF       ルールを書かずに語で持つ
-    C2 + 車種名の文字TF-IDF       同上・部分文字列で表記ゆれを吸収
-    E  C2 + 説明文の単語TF-IDF    自由記述本体（平均2,972文字）も足した上限
+    0  中央値                    予測しない場合の下限
+    A1 線形回帰・構造化列        従来手法の再現。model を使わない
+    A2 LightGBM・構造化列        モデルを木に替えただけの効果
+    B1 + model そのまま          19,739水準をそのままカテゴリに突っ込む
+    B2 + model を手書きルールで正規化   区切り記号以降を捨てて先頭2語
+    C1 + model の単語TF-IDF      ルールを書かずに語で持つ
+    C2 + model の文字TF-IDF      同上・部分文字列で表記ゆれを吸収
+    E  B2 + description の単語TF-IDF   自由記述本体も足した上限
+
+使う列と、その列を採る理由は scripts/clean_vehicles.py と
+eval_protocol.py の VEHICLES_* にまとめてある。
 
 実行:
     .venv/bin/python scripts/run_baselines_vehicles.py
@@ -37,7 +43,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_protocol import (  # noqa: E402
-    VEHICLES, cross_validate, load_dataset, show_leaderboard,
+    VEHICLES, VEHICLES_BOOL, VEHICLES_CAT, VEHICLES_LONG_TEXT, VEHICLES_NUM,
+    VEHICLES_TEXT, cross_validate, load_dataset, show_leaderboard,
 )
 from features import make_lgbm, make_linear, predict_median  # noqa: E402
 
@@ -47,31 +54,27 @@ TARGET = VEHICLES.target
 # 現実的な時間に収まらないので、seed 固定で間引く。
 N_SAMPLE = 60_000
 
-# 構造化列。中古車サイトが選択式で持っている項目。
-NUM = ["車齢", "走行距離_mile"]
-BOOL: list[str] = []
-CAT = ["メーカー", "状態", "気筒数", "燃料", "名義状態",
-       "変速機", "駆動", "サイズ", "ボディ", "色", "州"]
+# 使う列は eval_protocol.VEHICLES_* が正本（なぜその列かはそちらに書いてある）。
+# ここでは短い別名を置くだけで、他のスクリプトもこの名前で読み込んでいる。
+NUM = VEHICLES_NUM
+BOOL = VEHICLES_BOOL
+CAT = VEHICLES_CAT
+TEXT = VEHICLES_TEXT              # model（本実験の主役）
+DESC = VEHICLES_LONG_TEXT         # description（自由記述本体）
 
-TEXT = "車種名"      # 非構造テキスト（本実験の主役）
-DESC = "説明文"      # 自由記述本体
-
-RULE_COL = "車種名_ルール正規化"
+RULE_COL = "model_rule_normalized"
 
 
-# --- 手書きルールによる車種名の正規化 ---------------------------------
+# --- 手書きルールによる model の正規化 --------------------------------
 
-# Craigslist の model 列は「車種 + グレード + 装備 + 宣伝文」が混ざっている。
-#   ford  : 'f-150 raptor arizona raptor*rust free*icon level kit*tech pkg*...'
-#   ram   : '2500 slt / quad cab / 4x4 / leather / 5.9 l high output / ...'
-#   bmw   : 'x5 3.0i awd 126k miles 3.0l v6 pano roof heated leather'
-# シエンタでやったのと同じ発想（正規表現で車種の芯だけ抜く）を、素直に書いてみる。
+# 「正規表現で車種の芯だけ抜く」という、人手で書ける範囲のルールを素直に書く。
+# これが人間側の線で、機能A はこれを上回れるかで評価する。
 _SEP = re.compile(r"[*/|!,()\[\]]")           # ここから先は宣伝文とみなす
 _NOISE = re.compile(r"[^a-z0-9\- ]+")
 
 
 def normalize_model(s: str) -> str:
-    """区切り記号以降を捨て、先頭2語だけを車種名とみなす。"""
+    """区切り記号以降を捨て、先頭2語だけを車種の芯とみなす。"""
     if not isinstance(s, str):
         return ""
     head = _SEP.split(s)[0]
@@ -83,32 +86,31 @@ def main() -> None:
     df = load_dataset(dataset=VEHICLES, sample=N_SAMPLE)
     df[RULE_COL] = df[TEXT].map(normalize_model)
 
-    print(f"  車種名: {df[TEXT].nunique():,} 種類 "
+    print(f"  model: {df[TEXT].nunique():,} 種類 "
           f"→ 手書きルール正規化後 {df[RULE_COL].nunique():,} 種類")
-    print(f"  メーカー {df['メーカー'].nunique()} 社")
+    print(f"  manufacturer {df['manufacturer'].nunique()} 社")
 
     runs = [
         ("0  中央値", predict_median(TARGET), "予測しない場合の下限"),
         ("A1 線形回帰・構造化列",
          make_linear(TARGET, NUM, BOOL, CAT),
-         "Ridge + one-hot。車種名を使わない従来手法の再現"),
+         "Ridge + one-hot。model を使わない従来手法の再現"),
         ("A2 LightGBM・構造化列",
          make_lgbm(TARGET, NUM, BOOL, CAT),
          "A1と同じ列。モデルを木に替えた効果"),
-        ("B1 + 車種名そのまま",
+        ("B1 + model そのまま",
          make_lgbm(TARGET, NUM, BOOL, CAT + [TEXT]),
          f"自由記述{df[TEXT].nunique():,}水準をそのままカテゴリ扱い"),
-        ("B2 + 車種名を手書きルールで正規化",
+        ("B2 + model を手書きルールで正規化",
          make_lgbm(TARGET, NUM, BOOL, CAT + [RULE_COL]),
-         f"区切り記号以降を捨て先頭2語。{df[RULE_COL].nunique():,}水準。"
-         f"シエンタの正規表現抽出に相当"),
-        ("C1 + 車種名の単語TF-IDF",
+         f"区切り記号以降を捨て先頭2語。{df[RULE_COL].nunique():,}水準"),
+        ("C1 + model の単語TF-IDF",
          make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "word"),
          "min_df=5, max_features=300。ルールを書かずに語で持つ"),
-        ("C2 + 車種名の文字TF-IDF",
+        ("C2 + model の文字TF-IDF",
          make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "char"),
          "char_wb 2-4gram, max_features=1000。表記ゆれを部分文字列で吸収"),
-        ("E  B2 + 説明文の単語TF-IDF",
+        ("E  B2 + description の単語TF-IDF",
          make_lgbm(TARGET, NUM, BOOL, CAT + [RULE_COL], DESC, "word"),
          "自由記述本体（平均2,972文字）を足した場合の上積み"),
     ]

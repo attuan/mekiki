@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_protocol import ROOT  # noqa: E402
+from plot_style import use_japanese_font  # noqa: E402
 
-plt.rcParams["font.family"] = "Hiragino Sans"
-plt.rcParams["axes.unicode_minus"] = False
+use_japanese_font()
 OUT = ROOT / "results"
 
 # 版 → (グレード分離AUC, 近傍5件の価格MAE, 教師ありD2'のMAE)

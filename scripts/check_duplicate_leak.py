@@ -35,12 +35,12 @@ def main() -> None:
         )
     dup = pd.read_parquet(WITHDUP).sample(n=N_SAMPLE, random_state=SEED)
     dup = dup.reset_index(drop=True)
-    print(f"重複あり {N_SAMPLE:,} 行を抽出（車台番号の重複 "
-          f"{dup['車台番号'].duplicated().sum():,} 件）")
+    print(f"重複あり {N_SAMPLE:,} 行を抽出（VIN の重複 "
+          f"{dup['VIN'].duplicated().sum():,} 件）")
 
     runs = [
         ("A2 LightGBM・構造化列", make_lgbm(TARGET, NUM, BOOL, CAT)),
-        ("C2 + 車種名の文字TF-IDF", make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "char")),
+        ("C2 + model の文字TF-IDF", make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "char")),
     ]
     for name, fn in runs:
         print(f"\n[※重複あり {name}]")

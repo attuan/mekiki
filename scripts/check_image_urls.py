@@ -41,7 +41,7 @@ def sample_urls(n: int, seed: int = 42) -> list[tuple[int, str]]:
     rows = con.sql(f"""
         SELECT r.id, r.image_url
         FROM read_csv_auto('{RAW}', ignore_errors=true) r
-        JOIN read_parquet('{CLEAN}') c ON CAST(r.id AS VARCHAR) = CAST(c.物件ID AS VARCHAR)
+        JOIN read_parquet('{CLEAN}') c ON CAST(r.id AS VARCHAR) = CAST(c.id AS VARCHAR)
         WHERE r.image_url IS NOT NULL AND r.image_url <> ''
         USING SAMPLE {n} ROWS (reservoir, {seed})
     """).fetchall()

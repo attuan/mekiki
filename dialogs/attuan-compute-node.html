@@ -1,0 +1,900 @@
+<title>attuan の計算機ノード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #EDF1F3;
+    --surface:     #FFFFFF;
+    --surface-sunk:#E3EAEE;
+    --border:      #D2DDE3;
+    --border-firm: #B4C4CD;
+    --ink:         #0E1A20;
+    --ink-soft:    #33454F;
+    --muted:       #5A6C76;
+    --accent:      #0B4F6C;
+    --accent-soft: #DCEAF1;
+    --running:     #2F7A4F;
+    --running-bg:  #DFEFE5;
+    --stopped:     #6D7C85;
+    --stopped-bg:  #E1E7EA;
+    --caution:     #8F5510;
+    --caution-bg:  #F6E9D6;
+    --danger:      #93372A;
+    --danger-bg:   #F6E0DC;
+    --code-bg:     #0F2028;
+    --code-ink:    #D6E4EA;
+
+    --display: "Zen Old Mincho", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    --body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0C161B;
+      --surface:     #132027;
+      --surface-sunk:#0A1318;
+      --border:      #24363F;
+      --border-firm: #354B56;
+      --ink:         #E2EBF0;
+      --ink-soft:    #C0CFD7;
+      --muted:       #8EA3AD;
+      --accent:      #6FBCDF;
+      --accent-soft: #14313E;
+      --running:     #6FC494;
+      --running-bg:  #123125;
+      --stopped:     #8EA0AA;
+      --stopped-bg:  #1B282F;
+      --caution:     #E0A85A;
+      --caution-bg:  #33260F;
+      --danger:      #E28D7C;
+      --danger-bg:   #331914;
+      --code-bg:     #081217;
+      --code-ink:    #CFE0E8;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0C161B;
+    --surface:     #132027;
+    --surface-sunk:#0A1318;
+    --border:      #24363F;
+    --border-firm: #354B56;
+    --ink:         #E2EBF0;
+    --ink-soft:    #C0CFD7;
+    --muted:       #8EA3AD;
+    --accent:      #6FBCDF;
+    --accent-soft: #14313E;
+    --running:     #6FC494;
+    --running-bg:  #123125;
+    --stopped:     #8EA0AA;
+    --stopped-bg:  #1B282F;
+    --caution:     #E0A85A;
+    --caution-bg:  #33260F;
+    --danger:      #E28D7C;
+    --danger-bg:   #331914;
+    --code-bg:     #081217;
+    --code-ink:    #CFE0E8;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    padding: 56px 0 32px;
+    border-bottom: 2px solid var(--border-firm);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(30px, 5.6vw, 46px);
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    max-width: var(--measure);
+    color: var(--ink-soft);
+    font-size: 16.5px;
+  }
+
+  .specbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .spec {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing: 0.02em;
+    padding: 5px 11px;
+    border: 1px solid var(--border-firm);
+    border-radius: 2px;
+    background: var(--surface);
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .spec b { color: var(--accent); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+
+  section { padding-top: 52px; }
+
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(21px, 3.2vw, 27px);
+    line-height: 1.45;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    margin: 28px 0 8px;
+  }
+
+  .section-note {
+    color: var(--muted);
+    font-size: 14.5px;
+    max-width: var(--measure);
+    margin: 0 0 22px;
+  }
+
+  p { max-width: var(--measure); margin: 0 0 14px; }
+
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ---------- power panel ---------- */
+
+  .panel {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--border-firm);
+    border-radius: 3px;
+    background: var(--surface);
+    overflow: hidden;
+    margin-top: 28px;
+  }
+
+  @media (max-width: 640px) {
+    .panel { grid-template-columns: 1fr; }
+    .panel-mid { border-left: none !important; border-right: none !important; border-block: 1px solid var(--border) !important; }
+  }
+
+  .panel-state {
+    padding: 22px 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel-state.is-stopped { background: var(--stopped-bg); }
+  .panel-state.is-running { background: var(--running-bg); }
+
+  .lamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .lamp::before {
+    content: "";
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  .is-stopped .lamp { color: var(--stopped); }
+  .is-stopped .lamp::before { background: var(--stopped); opacity: .55; }
+  .is-running .lamp { color: var(--running); }
+  .is-running .lamp::before { background: var(--running); box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); }
+
+  .panel-title {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.4;
+  }
+
+  .panel-cost {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.7;
+  }
+
+  .panel-cost strong { font-size: 15px; }
+
+  .panel-mid {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    padding: 22px 20px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .throw {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .throw span:first-child { color: var(--accent); font-weight: 600; }
+
+  /* ---------- steps ---------- */
+
+  ol.steps { list-style: none; padding: 0; margin: 24px 0 0; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 0 18px;
+    padding: 26px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .step:last-child { border-bottom: 1px solid var(--border); }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    padding-top: 5px;
+  }
+
+  .step-body { min-width: 0; }
+
+  .step-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .step-title {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 19px;
+    line-height: 1.45;
+  }
+
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .check input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+  .step.done .step-title { opacity: .55; }
+  .step.done .step-num { opacity: .5; }
+
+  /* ---------- code ---------- */
+
+  .code {
+    position: relative;
+    margin: 14px 0;
+    border-radius: 3px;
+    background: var(--code-bg);
+    border: 1px solid color-mix(in srgb, var(--code-bg) 70%, var(--border-firm));
+  }
+
+  .code pre {
+    margin: 0;
+    padding: 15px 58px 15px 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--code-ink);
+    tab-size: 2;
+  }
+
+  .code .cmt { color: #7E9AA8; }
+  .code .flag { color: #E0A85A; }
+
+  .copy {
+    position: absolute;
+    top: 9px; right: 9px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 2px;
+    border: 1px solid #2E4753;
+    background: transparent;
+    color: #8FAEBC;
+    cursor: pointer;
+  }
+
+  .copy:hover { background: #16303B; color: #CFE3EC; }
+  .copy.ok { color: #6FC494; border-color: #2E5C44; }
+
+  code.inline {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--surface-sunk);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 5px;
+    word-break: break-all;
+  }
+
+  /* ---------- callouts ---------- */
+
+  .callout {
+    max-width: var(--measure);
+    margin: 18px 0;
+    padding: 16px 18px;
+    border-radius: 3px;
+    border: 1px solid;
+    font-size: 15px;
+  }
+
+  .callout p { margin: 0 0 8px; max-width: none; }
+  .callout p:last-child { margin: 0; }
+
+  .callout-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .c-caution { background: var(--caution-bg); border-color: color-mix(in srgb, var(--caution) 40%, transparent); }
+  .c-caution .callout-label { color: var(--caution); }
+  .c-danger { background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  .c-danger .callout-label { color: var(--danger); }
+  .c-note { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 32%, transparent); }
+  .c-note .callout-label { color: var(--accent); }
+
+  /* ---------- tables ---------- */
+
+  .table-scroll { overflow-x: auto; margin: 20px 0; border: 1px solid var(--border); border-radius: 3px; }
+
+  table { border-collapse: collapse; width: 100%; min-width: 520px; background: var(--surface); }
+
+  th, td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14.5px;
+    vertical-align: top;
+    line-height: 1.7;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--surface-sunk);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .yes { color: var(--running); font-weight: 700; }
+  .no  { color: var(--danger); font-weight: 700; }
+
+  /* ---------- misc ---------- */
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin: 22px 0;
+    overflow: hidden;
+  }
+
+  .fact { background: var(--surface); padding: 14px 16px; }
+
+  .fact dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+
+  .fact dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    color: var(--ink);
+    word-break: break-all;
+    line-height: 1.6;
+  }
+
+  ul.plain { max-width: var(--measure); padding-left: 1.25em; margin: 0 0 14px; }
+  ul.plain li { margin-bottom: 7px; }
+
+  .qa { border-top: 1px solid var(--border); padding: 20px 0; max-width: var(--measure); }
+  .qa:last-of-type { border-bottom: 1px solid var(--border); }
+  .qa-q { font-weight: 700; margin-bottom: 6px; }
+  .qa p { margin-bottom: 0; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 2px solid var(--border-firm);
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">INDX / internal dev / us-east-1</div>
+    <h1>attuan の計算機ノード</h1>
+    <p class="standfirst">
+      手元の PC の代わりに使える、16 コアの計算機を AWS 上に用意しました。
+      使うときに自分で電源を入れ、終わったら自分で切ります。
+      このページはその手順書です。上から順にやれば動きます。
+    </p>
+    <div class="specbar">
+      <span class="spec"><b>16</b> vCPU</span>
+      <span class="spec"><b>64</b> GiB RAM</span>
+      <span class="spec"><b>200</b> GB SSD</span>
+      <span class="spec">Ubuntu <b>24.04</b></span>
+      <span class="spec">m7i.4xlarge</span>
+      <span class="spec">us-east-1</span>
+    </div>
+  </header>
+
+  <section id="power">
+    <h2>まず、これだけは覚えてください</h2>
+    <p class="section-note">
+      このマシンは「使っている時間」に対してお金がかかります。電源の入切がそのまま費用です。
+    </p>
+
+    <div class="panel">
+      <div class="panel-state is-stopped">
+        <span class="lamp">stopped</span>
+        <div class="panel-title">止めている間</div>
+        <div class="panel-cost">
+          <strong>$0.02 / 時</strong><br>
+          ディスク 200 GB の保管料だけ。<br>
+          月あたり およそ <strong>$16</strong>。
+        </div>
+      </div>
+
+      <div class="panel-mid">
+        <div class="throw"><span>▶</span><span>start-instances</span></div>
+        <div class="throw"><span>■</span><span>stop-instances</span></div>
+      </div>
+
+      <div class="panel-state is-running">
+        <span class="lamp">running</span>
+        <div class="panel-title">動かしている間</div>
+        <div class="panel-cost">
+          <strong>$0.81 / 時</strong><br>
+          1 日 8 時間 × 20 日で およそ <strong>$130</strong>。<br>
+          消し忘れて 1 か月放置すると <strong>$589</strong>。
+        </div>
+      </div>
+    </div>
+
+    <div class="callout c-caution">
+      <span class="callout-label">自動停止があります</span>
+      <p>
+        CPU 使用率が 5% 未満の状態が 1 時間続くと、自動でシャットダウンされます（消し忘れ対策）。
+        ただし <b>1 コアしか使わない長い計算は、16 コア全体では 5% を下回って止められることがあります</b>。
+        長時間ジョブを流すときは事前に katsuyaito に声をかけてください。しきい値を上げます。
+      </p>
+    </div>
+
+    <div class="callout c-danger">
+      <span class="callout-label">これはやらないでください</span>
+      <p>
+        <code class="inline">terminate</code>（削除）はマシンとディスクの中身を丸ごと消します。取り消せません。
+        止めたいときは必ず <code class="inline">stop</code>（停止）を使ってください。
+      </p>
+    </div>
+  </section>
+
+  <section id="setup">
+    <h2>セットアップ</h2>
+    <p class="section-note">
+      1 から 4 は最初の 1 回だけ。5 と 6 が毎日の作業です。チェックは自動で保存されます。
+    </p>
+
+    <ol class="steps">
+
+      <li class="step" id="s1">
+        <div class="step-num">01</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">AWS にサインインする</span>
+            <label class="check"><input type="checkbox" data-step="s1"> done</label>
+          </div>
+          <p>
+            ユーザー名・初回パスワード・アクセスキーは、このページとは<b>別の経路</b>（1Password か Slack の DM）で渡します。
+            このページには載せていません。
+          </p>
+          <div class="facts">
+            <div class="fact"><dt>サインイン URL</dt><dd>https://697441478678.signin.aws.amazon.com/console</dd></div>
+            <div class="fact"><dt>アカウント ID</dt><dd>697441478678</dd></div>
+            <div class="fact"><dt>IAM ユーザー名</dt><dd>attuan</dd></div>
+            <div class="fact"><dt>リージョン</dt><dd>us-east-1（バージニア北部）</dd></div>
+          </div>
+          <p>
+            初回ログイン時にパスワードの変更を求められます。新しいパスワードはパスワードマネージャーに保存してください。
+            画面右上のリージョンが <b>N. Virginia</b> になっていることも確認します。ここが違うとマシンが一覧に出てきません。
+          </p>
+        </div>
+      </li>
+
+      <li class="step" id="s2">
+        <div class="step-num">02</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">手元の PC に AWS CLI を入れる</span>
+            <label class="check"><input type="checkbox" data-step="s2"> done</label>
+          </div>
+          <p>macOS / Linux なら次の通り。Windows なら WSL の中で同じことをします。</p>
+          <div class="code"><button class="copy">copy</button><pre><span class="cmt"># AWS CLI v2</span>
+curl <span class="flag">-fsSL</span> "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" <span class="flag">-o</span> awscliv2.zip
+unzip <span class="flag">-q</span> awscliv2.zip &amp;&amp; sudo ./aws/install
+
+<span class="cmt"># Session Manager プラグイン（サーバーに入るのに必要）</span>
+curl <span class="flag">-fsSL</span> "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" <span class="flag">-o</span> smp.deb
+sudo dpkg <span class="flag">-i</span> smp.deb</pre></div>
+          <p>入ったか確認します。両方バージョンが出れば成功です。</p>
+          <div class="code"><button class="copy">copy</button><pre>aws --version
+session-manager-plugin --version</pre></div>
+        </div>
+      </li>
+
+      <li class="step" id="s3">
+        <div class="step-num">03</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">アクセスキーを設定する</span>
+            <label class="check"><input type="checkbox" data-step="s3"> done</label>
+          </div>
+          <p>渡されたアクセスキーを登録します。リージョンは必ず <code class="inline">us-east-1</code> にしてください。</p>
+          <div class="code"><button class="copy">copy</button><pre>aws configure
+<span class="cmt">#   AWS Access Key ID     : 渡されたもの</span>
+<span class="cmt">#   AWS Secret Access Key : 渡されたもの</span>
+<span class="cmt">#   Default region name   : us-east-1</span>
+<span class="cmt">#   Default output format : json</span></pre></div>
+          <p>自分として認識されているか確認します。末尾が <code class="inline">user/attuan</code> なら成功です。</p>
+          <div class="code"><button class="copy">copy</button><pre>aws sts get-caller-identity</pre></div>
+          <div class="callout c-caution">
+            <span class="callout-label">キーの扱い</span>
+            <p>
+              アクセスキーは<b>あなた自身</b>です。GitHub・Slack の公開チャンネル・スクリーンショットに絶対に載せないでください。
+              うっかり出してしまったら、隠さずすぐ katsuyaito に連絡を。無効化して作り直すだけで済みます。
+            </p>
+          </div>
+        </div>
+      </li>
+
+      <li class="step" id="s4">
+        <div class="step-num">04</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">SSH 鍵と接続設定を置く</span>
+            <label class="check"><input type="checkbox" data-step="s4"> done</label>
+          </div>
+          <p>
+            渡された <code class="inline">attuan-key.pem</code> を <code class="inline">~/.ssh/</code> に置き、権限を絞ります。
+          </p>
+          <div class="code"><button class="copy">copy</button><pre>mv ~/Downloads/attuan-key.pem ~/.ssh/attuan-key.pem
+chmod 400 ~/.ssh/attuan-key.pem</pre></div>
+          <p>
+            次に <code class="inline">~/.ssh/config</code> に以下を追記します。
+            このサーバーは<b>インターネットにポートを一切開けていません</b>。AWS の Session Manager を通り道にして入るので、
+            この <code class="inline">ProxyCommand</code> の行が必要です。
+          </p>
+          <div class="code"><button class="copy">copy</button><pre>Host attuan
+    HostName i-01b5d31ffbff67135
+    User ubuntu
+    IdentityFile ~/.ssh/attuan-key.pem
+    ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p --region us-east-1"</pre></div>
+          <p>これで <code class="inline">ssh attuan</code> だけで入れるようになります。</p>
+        </div>
+      </li>
+
+      <li class="step" id="s5">
+        <div class="step-num">05</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">起動して、つなぐ</span>
+            <label class="check"><input type="checkbox" data-step="s5"> done</label>
+          </div>
+          <p>作業を始めるときの手順です。起動には 30 秒ほどかかります。</p>
+          <div class="code"><button class="copy">copy</button><pre><span class="cmt"># 電源を入れる</span>
+aws ec2 start-instances <span class="flag">--instance-ids</span> i-01b5d31ffbff67135
+
+<span class="cmt"># 起動しきるまで待つ</span>
+aws ec2 wait instance-running <span class="flag">--instance-ids</span> i-01b5d31ffbff67135
+
+<span class="cmt"># 入る</span>
+ssh attuan</pre></div>
+          <p>
+            ブラウザからでも同じことができます。AWS コンソール → EC2 → インスタンス →
+            <code class="inline">indx-internal-dev-us-east-1-attuan-compute</code> を選んで
+            「インスタンスの状態」→「インスタンスを開始」。
+          </p>
+          <h3>VSCode から使う</h3>
+          <p>
+            拡張機能 <b>Remote - SSH</b> を入れて、接続先に <code class="inline">attuan</code> を選ぶだけです。
+            ステップ 4 の <code class="inline">~/.ssh/config</code> をそのまま読んでくれます。
+            ただし <b>VSCode で開く前にサーバーを起動しておくこと</b>。止まっているとタイムアウトします。
+          </p>
+          <h3>作業場所</h3>
+          <p>
+            <code class="inline">/work</code> を共有の作業ディレクトリとして用意してあります。
+            Python は 3.12 が入っています。プロジェクトごとに仮想環境を切ってください。
+          </p>
+          <div class="code"><button class="copy">copy</button><pre>cd /work
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt</pre></div>
+          <div class="callout c-note">
+            <span class="callout-label">長い計算をするとき</span>
+            <p>
+              <code class="inline">tmux</code> を使ってください。SSH が切れても計算は生き残ります。
+              <code class="inline">tmux</code> で開始、<kbd>Ctrl+B</kbd> → <kbd>D</kbd> で離脱、
+              <code class="inline">tmux attach</code> で戻る。これを覚えるだけで作業が一気に楽になります。
+            </p>
+          </div>
+        </div>
+      </li>
+
+      <li class="step" id="s6">
+        <div class="step-num">06</div>
+        <div class="step-body">
+          <div class="step-head">
+            <span class="step-title">終わったら止める</span>
+            <label class="check"><input type="checkbox" data-step="s6"> done</label>
+          </div>
+          <p>
+            ここが一番大事です。作業を切り上げるときは必ず止めてください。
+            ディスクの中身は残るので、次に起動すれば続きから作業できます。
+          </p>
+          <div class="code"><button class="copy">copy</button><pre>aws ec2 stop-instances <span class="flag">--instance-ids</span> i-01b5d31ffbff67135</pre></div>
+          <p>止まったかどうかは、いつでもこれで確認できます。</p>
+          <div class="code"><button class="copy">copy</button><pre>aws ec2 describe-instances <span class="flag">--instance-ids</span> i-01b5d31ffbff67135 \
+  <span class="flag">--query</span> 'Reservations[0].Instances[0].State.Name' <span class="flag">--output</span> text</pre></div>
+          <p>
+            <code class="inline">stopped</code> と出れば止まっています。
+            <code class="inline">stopping</code> は停止処理の途中、<code class="inline">running</code> はまだ課金されています。
+          </p>
+        </div>
+      </li>
+
+    </ol>
+  </section>
+
+  <section id="permissions">
+    <h2>できること / できないこと</h2>
+    <p class="section-note">
+      このアカウントは <b>Owner タグが attuan の資源だけ</b> を触れるように制限されています。
+      他の人のサーバーは、見えても操作できません。壊す心配をせずに触ってください。
+    </p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>操作</th><th>可否</th><th>補足</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>自分のマシンの起動・停止・再起動</td><td class="yes">できる</td><td>毎日使う操作</td></tr>
+          <tr><td>Session Manager / SSH で入る</td><td class="yes">できる</td><td>ポート開放なしで入れる</td></tr>
+          <tr><td>自分のパスワード・アクセスキーの管理</td><td class="yes">できる</td><td>MFA の設定も自分でできる</td></tr>
+          <tr><td>EC2 の一覧を見る</td><td class="yes">できる</td><td>他人のマシンも一覧には出る</td></tr>
+          <tr><td>自分のマシンの削除（terminate）</td><td class="yes">できる</td><td>ディスクごと消える。基本使わない</td></tr>
+          <tr><td>他人のマシンの操作</td><td class="no">できない</td><td>タグで弾かれる</td></tr>
+          <tr><td>新しいサーバーに権限ロールを付けて起動</td><td class="no">できない</td><td>必要なら katsuyaito が用意する</td></tr>
+          <tr><td>IAM ユーザーや権限の作成・変更</td><td class="no">できない</td><td>—</td></tr>
+          <tr><td>S3・RDS などその他のサービス</td><td class="no">できない</td><td>必要になったら相談してください</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="trouble">
+    <h2>うまくいかないとき</h2>
+    <p class="section-note">
+      ほとんどはこの 5 つのどれかです。10 分試してだめなら、遠慮なく聞いてください。
+    </p>
+
+    <div class="qa">
+      <div class="qa-q">ssh がつながらない / タイムアウトする</div>
+      <p>
+        まずサーバーが動いているか確認します。<code class="inline">stopped</code> なら起動してください。
+        起動直後は Session Manager の準備に 1 分ほどかかることがあります。
+      </p>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">UnauthorizedOperation と言われる</div>
+      <p>
+        だいたいリージョン違いです。<code class="inline">aws configure get region</code> が
+        <code class="inline">us-east-1</code> になっているか確認してください。
+        コマンドに <code class="inline">--region us-east-1</code> を付けても直ります。
+      </p>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">気づいたら勝手に止まっていた</div>
+      <p>
+        自動停止が働いています。CPU がほぼ遊んでいる状態が 1 時間続いた合図です。
+        計算中に止められたなら、しきい値の調整が必要なので教えてください。
+      </p>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">ディスクが足りない</div>
+      <p>
+        <code class="inline">df -h /</code> で残量を確認できます。200 GB を超えそうなら拡張できるので相談してください。
+        一時ファイルの置きっぱなしが原因のことも多いです。
+      </p>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">パッケージが入れられない</div>
+      <p>
+        サーバーの中では <code class="inline">sudo</code> が使えます。
+        <code class="inline">sudo apt install …</code> で自由に入れて構いません。壊しても作り直せます。
+      </p>
+    </div>
+  </section>
+
+  <section id="reference">
+    <h2>手元に控えておく値</h2>
+    <p class="section-note">パスワードとアクセスキーはここには含めません。別経路で渡したものを使ってください。</p>
+    <div class="facts">
+      <div class="fact"><dt>インスタンス ID</dt><dd>i-01b5d31ffbff67135</dd></div>
+      <div class="fact"><dt>名前</dt><dd>indx-internal-dev-us-east-1-attuan-compute</dd></div>
+      <div class="fact"><dt>IP アドレス</dt><dd>34.239.22.137（固定）</dd></div>
+      <div class="fact"><dt>ログインユーザー</dt><dd>ubuntu</dd></div>
+      <div class="fact"><dt>SSH 鍵</dt><dd>attuan-key.pem（ed25519）</dd></div>
+      <div class="fact"><dt>作業ディレクトリ</dt><dd>/work</dd></div>
+      <div class="fact"><dt>自動停止アラーム</dt><dd>stop-on-idle-attuan-compute</dd></div>
+      <div class="fact"><dt>リージョン</dt><dd>us-east-1</dd></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      困ったら katsuyaito まで。「壊しそうで怖い」も含めて、聞いてもらったほうが早いです。<br>
+      価格は 2026 年 9 月時点の us-east-1 オンデマンド料金（$0.8064/時、gp3 $0.08/GB/月）に基づく概算です。
+    </p>
+  </footer>
+
+</div>
+
+<script>
+  // Copy buttons
+  document.querySelectorAll(".code .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.parentElement.querySelector("pre");
+      if (!pre) return;
+      var text = Array.from(pre.childNodes)
+        .filter(function (n) { return !(n.nodeType === 1 && n.classList.contains("cmt")); })
+        .map(function (n) { return n.textContent; })
+        .join("")
+        .split("\n")
+        .filter(function (l) { return l.trim() !== ""; })
+        .join("\n");
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = "copied";
+        btn.classList.add("ok");
+        setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("ok"); }, 1600);
+      }).catch(function () {
+        btn.textContent = "failed";
+        setTimeout(function () { btn.textContent = "copy"; }, 1600);
+      });
+    });
+  });
+
+  // Persistent step checklist
+  var KEY = "attuan-compute-steps";
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}"); }
+    catch (e) { return {}; }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+  }
+  var state = load();
+  document.querySelectorAll(".check input").forEach(function (box) {
+    var id = box.dataset.step;
+    var step = document.getElementById(id);
+    if (state[id]) { box.checked = true; step.classList.add("done"); }
+    box.addEventListener("change", function () {
+      step.classList.toggle("done", box.checked);
+      state[id] = box.checked;
+      save(state);
+    });
+  });
+</script>

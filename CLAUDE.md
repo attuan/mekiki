@@ -1,9 +1,9 @@
 # carprice
 
 株式会社INDX のインターン（2026/8/28〜）で作成する、中古車価格の自動予測プログラム。
-LLM を使った AutoML エージェントを構成し、特徴量生成と予測を自動化することが目標。
+LLM を使った AutoMLライブラリを構成し、特徴量生成と予測を自動化することが目標。
 
-## 分析アプローチ（構想の変遷）
+## 開発アプローチ（構想の変遷）
 
 「何を作るか」は3段階で変わってきた。**現在地は 3.（伊藤さんの仕様書）**。
 今後のミーティングにより方針が変わる可能性があるが、古い資料を読むときはどの時点のものかを意識すること。
@@ -55,6 +55,7 @@ Python ライブラリ `unfold` として設計し直された（→ `dialogs/un
 
 つまり方向性は **「3方式を比較する」→「組み合わせて1本のパイプラインにする」** に変わった。
 ただし各方式を同じ指標で測ること自体はまだ有効で、機能Bにどの証拠を入れるかの判断材料になる。
+やろうとしていることは、各データの分析ではなく、ライブラリの作成であることに留意する。
 
 ## ディレクトリ
 
@@ -62,11 +63,24 @@ Python ライブラリ `unfold` として設計し直された（→ `dialogs/un
   - `entrysheet.md` — 最初の企画案
   - `2026...ミーティング.md` — 方針が端的にまとまっている。迷ったらまずここ
   - `unfold-landing.html` — 伊藤さんによる設計書
-- `unfold/` — **ライブラリ本体**（機能A の骨組み）。仕様書 `dialogs/unfold-landing.html` の実装
+  - `2026-08-31-transcript.md` — 8/31 の生の文字起こし。**約18万文字あるので全文を読まない。**
+    `grep -n` で当たりを付けてから `sed -n 'A,Bp'` で該当箇所だけ開くこと。
+    要点は同日の Gemini メモ側にまとまっているので、まずそちらを見る
+- `unfold/` — **ライブラリ本体**。仕様書 `dialogs/unfold-landing.html` の実装
+  - `feature.py` — 機能A（`Feature`）。埋め込み → 近傍分類 → 確信度の低い行だけ LLM へ
+  - `predictor.py` — 機能B（`LLMPredictor`）。統計モデルと類似事例を証拠に LLM が最終判断
+  - `adaptive.py` — 信頼度ルーティング（`AdaptivePredictor`）。機能B を包み、呼ぶ前に手に入る信号で LLM に回す行を絞る
+  - `leakage.py` — 重複レコードの検知。fit / predict のときに自動で警告する
+  - `demo.py` — `python -m unfold.demo` で全体を一度に動かす入口。既定では LLM を呼ばない
+  - `llm.py` — **唯一 Claude API を呼ぶ場所**。ディスクキャッシュ・費用計上・並列実行
 - `tests/` — `unfold` のテスト。`.venv/bin/python -m pytest tests -q`
 - `scripts/` — データ取得・測定などの補助スクリプト
+  - `caafe.py` は比較対象（CAAFE 相当）の実装。**LLM が書いたコードを実行する**ので、
+    自分のデータ・自分の環境でだけ動かすこと
+  - `check_docs.py` は通しドキュメント（progress-log・related-work・README）の
+    更新漏れを機械的に探す。本数・索引漏れ・P/S/R の不整合と、素材だけが動いたコミットを見る
 - `sampledata/` — データ。用途ごとに4つに分かれている（下記）
-
+- `docs/` -資料置き場。`PRD.md`は編集しないこと。他資料は編集して良いが、基本的にREADMEにのっとり、これ以上通しドキュメントをつくらないこと。(人間が追えなくなる)
 ## データ
 
 置き場所のルールはこの4つ。新しいデータを足すときは必ずどれかに分類する。
@@ -112,7 +126,14 @@ pandas で本番データを読むときも `nrows=` か `chunksize=` を必ず�
 
 ## 環境
 
-Python 3.12.14（Homebrew）+ venv。**システムの `/usr/bin/python3`（3.9）は使わない。**
+Python 3.12 + venv。**システム標準の Python（macOS の 3.9）は使わない。**
+
+実行環境は2つある。**測定は計算ノードで行う**（`docs/2026-09-01-migration.md`）。
+
+| | 用途 | 備考 |
+|---|---|---|
+| 計算ノード（Ubuntu 24.04 / 16 vCPU / 64GB） | 測定・学習・LLM バッチ・ノートブック | データとキャッシュの正本はここ |
+| 手元の Mac | コード編集、オフライン時の予備 | `results/` に数字を書く実行はしない |
 
 ```bash
 source .venv/bin/activate     # 有効化。以後 python / pip は venv のものになる
@@ -124,10 +145,18 @@ source .venv/bin/activate     # 有効化。以後 python / pip は venv のも�
 未セットアップの環境での構築手順:
 
 ```bash
+# Ubuntu（計算ノード）— libomp 相当は wheel に同梱されているので不要
+sudo apt update && sudo apt install -y python3.12-venv fonts-noto-cjk
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# macOS
 brew install python@3.12 libomp          # libomp は xgboost/lightgbm に必要
 /usr/local/opt/python@3.12/bin/python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
+
+`fonts-noto-cjk` はグラフの日本語のために要る（下記「ノートブック」参照）。
 
 APIキーは `.env`（git管理外）に置く。雛形は `.env.example`。
 
@@ -161,6 +190,18 @@ duckdb.sql("SELECT manufacturer, count(*) FROM "
 （`sampledata/processed/vehicles_multi_clean.parquet`, 200,374行）。
 複数車種での検証結果は `docs/2026-08-29-vehicles-multi.md`。
 
+### 中間データの並び順を変えない
+
+`sampledata/processed/` は「コードで再生成できる」建前だが、**再生成した
+parquet の行の並びが変わると測定が再現できなくなる。** DuckDB は並列に読むので、
+`ORDER BY` を書かないと同じ SQL でも並びが実行ごとに変わり、
+位置で引く `load_dataset(sample=60_000)` が別の6万行を返す。
+プロンプトが変われば LLM のキャッシュも全部外れて課金され直す。
+
+`clean_vehicles.py` は `ORDER BY id` で固定済み（9/1 に修正）。
+**新しく中間データを作るスクリプトを書くときも、必ず書き出しの並びを固定すること。**
+なお 8/31 までの Craigslist の測定値は修正前のもので、そのままでは再現できない。
+
 ### 既知のデータ品質問題
 
 `vehicles.csv` の `price` は外れ値が激しい。平均 $75,199 に対し中央値 $13,950、
@@ -179,12 +220,17 @@ duckdb.sql("SELECT manufacturer, count(*) FROM "
 カーネルは必ず `.venv` のものを使う。ノートブック内では `!pip install` を使わず、
 `requirements.txt` に追記して `pip install -r requirements.txt` する。
 
-グラフに日本語を使う場合は先頭で以下を設定する（未設定だと豆腐□になる）:
+グラフに日本語を使う場合は先頭で以下を呼ぶ（未設定だと豆腐□になる）:
 
 ```python
-plt.rcParams["font.family"] = "Hiragino Sans"
-plt.rcParams["axes.unicode_minus"] = False
+import sys; sys.path.insert(0, str(ROOT / "scripts"))
+from plot_style import use_japanese_font
+use_japanese_font()
 ```
+
+**フォント名を直書きしないこと。** macOS は Hiragino Sans、Ubuntu は Noto Sans CJK JP と
+名前が違うので、決め打ちするともう一方の環境で豆腐になる。
+`scripts/plot_style.py` が実際に入っているフォントを探して選ぶ。
 
 出力込みでコミットしている（結果を共有するため）。差分が読みにくくなってきたら
 `nbstripout` の導入を検討する。
@@ -196,5 +242,20 @@ plt.rcParams["axes.unicode_minus"] = False
   - このルールは `.claude/hooks/block_large_git_add.py` が機械的に強制している。
     `git add` / `git commit` の直前にサイズを検査し、100MB 以上は拒否、25MB 以上は確認を求める。
     閾値は環境変数 `CARPRICE_GIT_DENY_MB` / `CARPRICE_GIT_ASK_MB` で変えられる。
+- APIキー（`.env`）の中身を読まない。読むと値が会話に取り込まれて API に送られ、
+  ローカルの会話ログにも平文で残るため
+  - このルールも機械的に強制している。`permissions.deny` の `Read(./.env)` が Read ツールを、
+    `.claude/hooks/block_env_read.py` が Bash 経由（`cat .env` など）を塞ぐ。
+    `.env.example` の閲覧や `cp .env.example .env` は通る。
+    キーが有効かの確認は `scripts/check_api_key.py`（末尾4文字しか表示しない）を使う。
+  - 判定は保守的で、キーについて**書く**だけの操作（このルールの説明を Bash の
+    ヒアドキュメントで書くなど）も巻き込む。その場合は Edit ツールを使うか、
+    `CARPRICE_ALLOW_ENV_READ=1` を付けて実行する
 - 生成した中間ファイルは `sampledata/processed/` に置く（git 管理外）
+- 作業が一段落したら通しドキュメント（`docs/progress-log.md`・
+  `docs/related-work.md`・`README.md`・`docs/README.md`）を現状に合わせる。手順は
+  `/update-docs`（`.claude/skills/update-docs/`）にある
+  - `.claude/hooks/check_docs_updated.py` が `git commit` の直前に見ていて、
+    `results/` や `unfold/` だけをコミットしようとして通しドキュメントが1本も入っていないと
+    確認を求める。**拒否はしない**ので、記録を後でまとめる進め方はそのまま通せる
 - コミットメッセージは日本語で可

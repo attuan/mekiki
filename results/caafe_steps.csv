@@ -1,0 +1,253 @@
+﻿fold,回,名前,採用,検証MAE,差,理由,コード
+1,1,model_truck_grade_flags,True,3377.3428607547366,+72.28,"車種名の自由記述には駆動方式(4x4/4wd)、ヘビーデューティ(f-250, super duty, 2500/3500, diesel系)、上級グレード(limited, laramie, denali等)が埋め込まれており、これらは価格を大きく押し上げるため。","s = df['車種名'].fillna('').str.lower()
+df['mn_4x4'] = s.str.contains(r'4x4|4wd|awd|quattro|4matic', regex=True, na=False).astype(int)
+df['mn_heavy_duty'] = s.str.contains(r'super\s*duty|f-?[23]50|[23]500|hd\b|duramax|powerstroke|cummins|dually|srw|drw', regex=True, na=False).astype(int)
+df['mn_high_trim'] = s.str.contains(r'limited|laramie|denali|platinum|lariat|ltz|king ranch|premium|sport|touring|amg|type ?[rs]|trd|z71|xlt|se?l\b', regex=True, na=False).astype(int)"
+1,2,miles_per_year,True,3355.4445465528142,+21.90,年間走行距離は使用強度を表し、同じ車齢でも走行が少ない個体は高値になるため。走行距離と車齢の単純な組み合わせより価格説明力が高い。,"age = df['車齢'].clip(lower=0).fillna(0)
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+df['miles_per_year'] = mi / (age + 1)
+df['log_miles'] = np.log1p(mi)"
+1,3,maker_model_target_size,True,3189.96542432481,+165.48,メーカー×車種名の先頭トークンで正規化した車種キーの出現頻度は、人気度や量産グレード帯を表し価格水準の代理になる。文字列の粒度を数値化して木モデルが使いやすくする。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.strip()
+base = s.str.split().str[:2].str.join('_')
+key = df['メーカー'].fillna('na').str.lower() + '_' + base
+df['mm_key_freq'] = key.map(key.value_counts()).fillna(0).astype(float)
+df['model_name_ntokens'] = s.str.split().apply(len)"
+1,4,luxury_and_body_premium,True,3165.1379778543383,+24.83,高級ブランドやスポーツ/トラック系ボディは同年式・同走行でも価格帯が大きく異なるため、ブランド階層とボディの粗い区分が価格説明に効くと考えられる。,"mk = df['メーカー'].fillna('').str.lower()
+lux = ['mercedes-benz','bmw','audi','lexus','porsche','tesla','land rover','jaguar','infiniti','acura','cadillac','lincoln','volvo','alfa-romeo','aston-martin','ferrari','rover']
+df['is_luxury_brand'] = mk.isin(lux).astype(int)
+b = df['ボディ'].fillna('').str.lower()
+df['is_truck_body'] = b.str.contains('truck|pickup|van|bus', na=False).astype(int)
+df['lux_age'] = df['is_luxury_brand'] * df['車齢'].clip(lower=0).fillna(0)"
+1,5,cyl_cond_title_ordinal,False,3179.4754932031415,-14.34,気筒数は排気量・車格の代理で価格に強く効き、状態と名義状態（salvage/rebuiltは大幅減価）も順序尺度化すると線形に効く。,"df['cyl_num'] = df['気筒数'].fillna('').str.extract(r'(\d+)', expand=False).astype(float)
+cond_map = {'new':5,'like new':4,'excellent':3,'good':2,'fair':1,'salvage':0}
+df['cond_ord'] = df['状態'].fillna('').str.lower().str.strip().map(cond_map).astype(float)
+title_map = {'clean':3,'lien':2,'rebuilt':1,'salvage':0,'parts only':0,'missing':1}
+df['title_ord'] = df['名義状態'].fillna('').str.lower().str.strip().map(title_map).astype(float)"
+1,6,listing_completeness_and_fuel_premium,False,3170.032684643387,-4.89,未入力の多い出品は情報が薄く安価な車体である傾向があり、欠損数は価格の代理指標になる。またディーゼル/電気/ハイブリッドは同年式でも価格帯が大きく異なる。,"cols = ['状態','気筒数','燃料','名義状態','駆動','サイズ','ボディ','色']
+df['n_missing_fields'] = df[cols].isna().sum(axis=1).astype(float)
+f = df['燃料'].fillna('').str.lower()
+df['fuel_premium'] = np.select([f.str.contains('diesel', na=False), f.str.contains('electric', na=False), f.str.contains('hybrid', na=False)], [3, 2, 1], default=0).astype(float)"
+1,7,model_year_engine_tokens,True,3146.951936523677,+18.19,"車種名に埋め込まれた排気量（例: 328i の数字や 2.0t, v6/v8）はエンジン規模やグレードを表し、価格に直結する。","s = df['車種名'].fillna('').str.lower()
+df['mn_displacement'] = s.str.extract(r'(\d\.\d)\s*[lt]?', expand=False).astype(float)
+df['mn_vcyl'] = s.str.extract(r'\bv\s?-?(\d{1,2})\b', expand=False).astype(float)
+df['mn_trim_num'] = s.str.extract(r'\b(\d{3})\s?[a-z]?\b', expand=False).astype(float)"
+1,8,model_group_relative_wear,True,3126.7349815502716,+20.22,同じ車種内で走行距離や車齢が平均よりどれだけ多い/少ないかは、その車種の相場に対する価格の上下を直接説明する。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.strip()
+base = s.str.split().str[:2].str.join('_')
+key = df['メーカー'].fillna('na').str.lower() + '_' + base
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median()).astype(float)
+age = df['車齢'].clip(lower=0).fillna(0).astype(float)
+g = mi.groupby(key)
+df['mi_dev_in_model'] = (mi - g.transform('median')).astype(float)
+df['age_dev_in_model'] = (age - age.groupby(key).transform('median')).astype(float)"
+1,9,state_market_level,False,3134.127572206761,-7.39,州ごとの市場水準は価格に影響する（税制・需要・トラック比率など）。州単位の走行距離・車齢の平均や出品数で地域差を表現する。,"st = df['州'].fillna('na').str.lower()
+df['state_freq'] = st.map(st.value_counts()).fillna(0).astype(float)
+age = df['車齢'].clip(lower=0).fillna(0).astype(float)
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median()).astype(float)
+df['state_mean_age'] = age.groupby(st).transform('mean').astype(float)
+df['state_mean_miles'] = mi.groupby(st).transform('mean').astype(float)"
+1,10,depreciation_curve_terms,True,3098.6717404138485,+28.06,価格の減価は車齢・走行距離に対して非線形（指数的）に減るため、逆数や交互作用項を与えると木モデルでも減価曲線を捉えやすい。,"age = df['車齢'].clip(lower=0).fillna(0).astype(float)
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median()).astype(float)
+df['inv_age'] = 1.0 / (age + 1.0)
+df['age_x_logmiles'] = age * np.log1p(mi)
+df['decay_score'] = np.exp(-age / 8.0) * np.exp(-mi / 150000.0)"
+2,1,truck_diesel_4x4_flags,True,3444.481726362898,+102.64,車種名に含まれるピックアップ/大型トラック表記、4x4/4wd表記、ディーゼルは高価格帯の主要因で、選択式列の欠損を補える情報源になる。,"t = df['車種名'].fillna('').str.lower()
+df['name_truck_flag'] = t.str.contains(r'f-?[1-3]50|silverado|sierra|ram\s*(1500|2500|3500)|\b[123]500\b|tacoma|tundra|frontier|colorado|canyon|super\s*duty|duramax|cummins|powerstroke', regex=True, na=False).astype(int)
+df['name_4x4_flag'] = t.str.contains(r'4x4|4wd|awd|quattro|4matic|xdrive', regex=True, na=False).astype(int)
+df['name_diesel_flag'] = (t.str.contains(r'diesel|duramax|cummins|powerstroke|tdi', regex=True, na=False) | df['燃料'].fillna('').str.lower().eq('diesel')).astype(int)"
+2,2,miles_per_year_and_trim,True,3411.368667122964,+33.11,年間走行距離は車齢と距離の交互作用で状態の良さを示し、上級グレード（limited/denali等）は価格を大きく押し上げるため。,"age = df['車齢'].clip(lower=0).fillna(0)
+df['miles_per_year'] = df['走行距離_mile'].fillna(df['走行距離_mile'].median()) / (age + 1)
+t = df['車種名'].fillna('').str.lower()
+df['name_hightrim_flag'] = t.str.contains(r'limited|denali|platinum|lariat|laramie|king ranch|ltz|touring|premium|sport|se[l]?\b|titanium|summit|overland|amg|m sport|type[- ]?s', regex=True, na=False).astype(int)
+df['name_basetrim_flag'] = t.str.contains(r'\b(base|work truck|\bwt\b|\bls\b|\ble\b|\bce\b|\bs\b|\bxl\b|\bdx\b)', regex=True, na=False).astype(int)"
+2,3,luxury_brand_and_body_size,True,3404.161578399126,+7.21,メーカーの高級度は価格水準を大きく左右し、ボディ形状（クーペ・コンバチ・バン）も残価に効く。,"m = df['メーカー'].fillna('').str.lower()
+df['luxury_brand_flag'] = m.str.contains(r'bmw|mercedes|audi|lexus|infiniti|acura|cadillac|porsche|jaguar|land rover|tesla|volvo|alfa|aston|ferrari|maserati|bentley|rover', regex=True, na=False).astype(int)
+t = (df['車種名'].fillna('') + ' ' + df['ボディ'].fillna('')).str.lower()
+df['name_convertible_coupe_flag'] = t.str.contains(r'convertible|coupe|roadster|cabriolet|\bcpe\b', regex=True, na=False).astype(int)
+df['name_van_flag'] = t.str.contains(r'van|caravan|odyssey|sienna|transit|express|savana', regex=True, na=False).astype(int)"
+2,4,cond_cyl_ordinal,True,3373.4489924928184,+30.71,状態は価格に直結する順序変数で、気筒数も排気量の代理として効く。文字列のままでは順序が使われないため数値化する。,"c = df['状態'].fillna('').str.lower().str.strip()
+df['cond_score'] = c.map({'new':5,'like new':4,'excellent':3,'good':2,'fair':1,'salvage':0}).fillna(-1)
+df['cyl_num'] = pd.to_numeric(df['気筒数'].fillna('').str.extract(r'(\d+)')[0], errors='coerce').fillna(-1)"
+2,5,model_key_freq_and_age_miles,True,3276.611198750992,+96.84,車種名の先頭トークン（モデル名）で正規化した出現頻度は人気・大衆度の代理となり、車齢と走行距離の交互作用は劣化度を直接表すため。,"t = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.split().str[:2].str.join('_')
+key = df['メーカー'].fillna('').str.lower() + '_' + t
+df['model_key_freq'] = key.map(key.value_counts()).fillna(0).astype(float)
+df['age_x_miles'] = df['車齢'].clip(lower=0).fillna(0) * df['走行距離_mile'].fillna(df['走行距離_mile'].median()) / 10000.0"
+2,6,engine_disp_and_cab_style,True,3248.111694226318,+28.50,"車種名に含まれる排気量（例 5.7l, 2.0t）は動力性能とグレードの代理指標で価格に直結する。またクルーキャブ/エクステンデッドキャブの区別はトラック価格差が大きい。","t = df['車種名'].fillna('').str.lower()
+disp = pd.to_numeric(t.str.extract(r'(\d\.\d)\s*l?')[0], errors='coerce')
+df['name_displacement'] = disp.where((disp >= 1.0) & (disp <= 8.5)).fillna(-1)
+df['name_crewcab_flag'] = t.str.contains(r'crew\s*cab|supercrew|quad\s*cab|crewmax', regex=True, na=False).astype(int)
+df['name_extcab_flag'] = t.str.contains(r'ext(ended)?\s*cab|supercab|double\s*cab|access\s*cab|king\s*cab|reg(ular)?\s*cab', regex=True, na=False).astype(int)"
+2,7,miles_dev_by_age,False,3282.7701127543382,-34.66,同じ車齢帯の中で走行距離が平均よりどれだけ多い/少ないかは、絶対距離より価格への影響を素直に表す。年式効果と分離できる。,"age = df['車齢'].clip(lower=0).fillna(df['車齢'].median())
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+ab = age.clip(upper=25).astype(int)
+med = ab.map(mi.groupby(ab).median()).fillna(mi.median())
+df['miles_dev_by_age'] = mi - med
+df['miles_ratio_by_age'] = mi / (med + 1.0)"
+2,8,brand_state_price_tier_proxy,False,3278.7836066853647,-30.67,メーカーの平均車齢・平均走行距離といったグループ統計は、そのブランドの価格帯や耐久性の代理指標になり、価格説明に役立つ。,"m = df['メーカー'].fillna('unknown').str.lower()
+age = df['車齢'].clip(lower=0).fillna(df['車齢'].median())
+mi = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+df['brand_mean_age'] = m.map(age.groupby(m).mean()).fillna(age.mean())
+df['brand_mean_miles'] = m.map(mi.groupby(m).mean()).fillna(mi.mean())
+df['brand_freq'] = m.map(m.value_counts()).fillna(0).astype(float)"
+2,9,name_perf_ev_and_wordcount,True,3229.629826162458,+18.48,車種名に含まれる高性能グレード表記や電動系キーワードは価格を大きく押し上げ、記述の詳細さ（語数）も装備充実度・出品者の丁寧さの代理になるため。,"t = df['車種名'].fillna('').str.lower()
+df['name_perf_flag'] = t.str.contains(r'\bgt\b|\bss\b|\bsrt\b|shelby|\bst\b|\brs\b|\bgti\b|\bwrx\b|\btrd\b|raptor|z71|hemi|turbo|supercharg|\bv8\b|\bamg\b|\bm3\b|\bm5\b|trailhawk|rubicon', regex=True, na=False).astype(int)
+df['name_ev_hybrid_flag'] = (t.str.contains(r'hybrid|electric|\bev\b|plug[- ]?in|prius|leaf|volt|bolt|tesla|model [s3xy]', regex=True, na=False) | df['燃料'].fillna('').str.lower().isin(['hybrid','electric'])).astype(int)
+df['name_word_count'] = t.str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.split().str.len().fillna(0).astype(float)"
+2,10,listing_completeness_and_title,True,3224.8346843464838,+4.80,入力項目の埋まり具合は出品者の丁寧さ・車の価値帯と相関し、名義状態（salvage/rebuilt）は価格を大きく下げるため。,"cols = ['状態','気筒数','燃料','名義状態','駆動','サイズ','ボディ','色']
+df['missing_field_count'] = df[cols].isna().sum(axis=1).astype(float)
+ti = df['名義状態'].fillna('unknown').str.lower()
+df['title_penalty_flag'] = ti.str.contains(r'salvage|rebuilt|missing|parts', regex=True, na=False).astype(int)
+df['title_clean_flag'] = ti.eq('clean').astype(int)"
+3,1,mileage_per_year,True,3454.1970446869946,+0.02,年間走行距離は使用強度を表し、同じ車齢・走行距離でも価格差を説明する。対数走行距離も価格との非線形関係を線形化する。,"age = df['車齢'].clip(lower=0).fillna(0)
+miles = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+df['mileage_per_year'] = miles / (age + 1)
+df['log_mileage'] = np.log1p(miles)"
+3,2,trim_luxury_flags,True,3429.245699832838,+24.95,"車種名に含まれるグレード/駆動/キャブ表記（lariat, limited, 4x4, crew cabなど）は同一モデル内の価格差を大きく説明するため。","tn = df['車種名'].fillna('').str.lower()
+df['trim_premium'] = tn.str.contains(r'lariat|limited|denali|platinum|laramie|ltz|king ranch|sport|premium|touring|se\b|xlt|slt', regex=True, na=False).astype(int)
+df['is_4x4'] = tn.str.contains(r'4x4|4wd|awd|quattro|4matic', regex=True, na=False).astype(int)
+df['crew_cab'] = tn.str.contains(r'crew|supercrew|quad cab|extended cab|super cab|supercab|mega cab', regex=True, na=False).astype(int)"
+3,3,base_model_token,True,2967.7658470776973,+461.48,車種名の先頭トークンを正規化すると同一モデルの表記ゆれをまとめられ、モデル固有の価格水準（人気度・希少度）を頻度として捉えられる。,"tn = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.strip()
+base = tn.str.split().str[0].fillna('')
+base = base.str.replace(r'^f\s*-?\s*(150|250|350)$', r'f\1', regex=True)
+key = df['メーカー'].fillna('') + '_' + base
+df['base_model_freq'] = key.map(key.value_counts()).fillna(0).astype(float)
+df['base_model_code'] = pd.factorize(key)[0]"
+3,4,cyl_num_and_diesel_truck,True,2942.0485902781124,+25.72,気筒数を数値化するとエンジン規模が価格に直結し、ディーゼル×トラックは高値帯の代表的な組み合わせなので明示フラグ化すると効く。,"cyl = df['気筒数'].fillna('').str.extract(r'(\d+)')[0]
+df['cyl_num'] = pd.to_numeric(cyl, errors='coerce').fillna(-1)
+tn = df['車種名'].fillna('').str.lower()
+body = df['ボディ'].fillna('').str.lower()
+is_truck = (body.str.contains('truck|pickup', na=False) | tn.str.contains(r'f\s*-?\s*[23]50|silverado|sierra|ram\b|2500|3500|duty', regex=True, na=False)).astype(int)
+df['diesel_truck'] = ((df['燃料'].fillna('')=='diesel').astype(int) * is_truck)"
+3,5,model_token_stats,True,2940.0965640922914,+1.95,"車種名を単語集合に分解し、トークン数や高級・排気量表記（例: 2.0t, v8, hybrid, sport系の数値グレード）を拾うと、グレード水準の細かい差が価格に反映される。","tn = df['車種名'].fillna('').str.lower()
+df['name_token_count'] = tn.str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.split().apply(len)
+df['name_engine_disp'] = pd.to_numeric(tn.str.extract(r'(\d\.\d)\s*(?:l|t|liter)?', expand=False), errors='coerce').fillna(-1)
+df['name_vpower'] = tn.str.contains(r'\bv[\- ]?(6|8|10|12)\b|hemi|turbo|supercharg', regex=True, na=False).astype(int)"
+3,6,state_price_proxy_and_condition_rank,False,2951.9367597767227,-11.84,状態は順序尺度なので数値化すると価格に直結し、州は地域相場（税・需要）の差を表す。頻度と順序化で効かせる。,"cond_map = {'new':5,'like new':4,'excellent':3,'good':2,'fair':1,'salvage':0}
+df['condition_rank'] = df['状態'].fillna('').str.lower().str.strip().map(cond_map).fillna(-1)
+st = df['州'].fillna('na').str.lower()
+df['state_code'] = pd.factorize(st)[0]
+df['state_freq'] = st.map(st.value_counts()).fillna(0).astype(float)"
+3,7,mileage_vs_age_residual,False,2973.5941985711065,-33.50,同じ車齢でも走行距離が平均より少ない個体は高値になりやすく、車齢ごとの期待走行距離との差（比）は価格の説明力が高いと考えられる。,"age = df['車齢'].clip(lower=0).fillna(0)
+miles = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+exp = age.map(miles.groupby(age).median()).fillna(miles.median())
+df['mileage_ratio_to_age_norm'] = miles / (exp + 1.0)
+df['mileage_resid_age'] = miles - exp"
+3,8,brand_luxury_tier,False,2958.452034045767,-18.36,メーカーごとの価格水準（高級ブランドか大衆車か、商用トラック系か）は価格の大きな決定要因で、まだブランド属性を明示的に与えていないため。,"mk = df['メーカー'].fillna('').str.lower().str.strip()
+lux = ['mercedes-benz','bmw','audi','lexus','porsche','tesla','land rover','jaguar','infiniti','acura','cadillac','lincoln','volvo','alfa-romeo','aston-martin','ferrari','harley-davidson']
+cheap = ['kia','hyundai','mitsubishi','suzuki','saturn','pontiac','mercury','fiat','scion','chrysler','buick']
+df['brand_luxury'] = mk.isin(lux).astype(int)
+df['brand_budget'] = mk.isin(cheap).astype(int)
+df['brand_freq'] = mk.map(mk.value_counts()).fillna(0).astype(float)"
+3,9,age_mileage_interaction,False,2947.2044220253333,-7.11,減価は車齢と走行距離の非線形な組み合わせで決まるため、指数的減衰項と両者の積を与えると価格曲線を近似しやすい。,"age = df['車齢'].clip(lower=0).fillna(0)
+miles = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+df['age_x_logmiles'] = age * np.log1p(miles)
+df['depreciation_curve'] = np.exp(-age / 7.0) * np.exp(-miles / 150000.0)"
+3,10,full_trim_identity,True,2933.135481723705,+6.96,車種名の全文（正規化後）をそのままカテゴリ化すると、グレード違いまで含めた同一仕様の価格水準を捉えられる。頻出仕様は取引が多く価格も安定するため頻度も情報になる。,"tn = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9]+', ' ', regex=True).str.strip()
+key = df['メーカー'].fillna('').str.lower() + '|' + tn
+df['full_trim_code'] = pd.factorize(key)[0]
+df['full_trim_freq'] = key.map(key.value_counts()).fillna(0).astype(float)"
+4,1,heavy_duty_truck_flags,True,3290.1432689854523,+46.38,車種名から4x4/4wdやヘビーデューティ(250/2500/3500等)、ディーゼル系トラックの表記を抽出すると、同じ年式・走行距離でも価格が大きく高くなる層を捉えられる。,"s = df['車種名'].fillna('').str.lower()
+df['is_4x4_name'] = s.str.contains(r'4x4|4wd|awd|quattro|4matic', regex=True, na=False).astype(int)
+df['is_heavy_duty'] = s.str.contains(r'\b(?:f-?[23456]50|[23]500|super\s*duty|sierra\s*[23]500|ram\s*[23]500|duramax|powerstroke|power\s*stroke|cummins)\b', regex=True, na=False).astype(int)
+df['is_crew_cab'] = s.str.contains(r'crew\s*cab|supercrew|quad\s*cab|super\s*cab|extended\s*cab|king\s*cab|double\s*cab', regex=True, na=False).astype(int)"
+4,2,miles_per_year,True,3272.250603886672,+17.89,年間走行距離は同じ車齢でも使用強度の違いを表し、価格の残差を説明する。低走行のプレミアムを捉えられる。,"age = df['車齢'].fillna(df['車齢'].median()).clip(lower=0)
+miles = df['走行距離_mile'].fillna(df['走行距離_mile'].median()).clip(lower=0)
+df['miles_per_year'] = miles / (age + 1)
+df['log_miles'] = np.log1p(miles)"
+4,3,luxury_trim_signal,True,3242.3930974030995,+29.86,車種名に含まれる高級グレード/スポーツ・ラグジュアリー表記や高級メーカー判定は、同じ車齢・走行距離でも価格を大きく押し上げるため。,"s = df['車種名'].fillna('').str.lower()
+m = df['メーカー'].fillna('').str.lower()
+df['is_luxury_make'] = m.str.contains(r'bmw|mercedes|audi|lexus|porsche|jaguar|land rover|tesla|infiniti|acura|cadillac|lincoln|volvo|alfa|aston|ferrari|maserati|bentley', regex=True, na=False).astype(int)
+df['trim_luxury_score'] = s.str.contains(r'limited|platinum|denali|lariat|laramie|touring|premium|luxury|ltz|titanium|sport|gt\b|amg|s-?line|king ranch|high country', regex=True, na=False).astype(int)
+df['name_word_count'] = s.str.split().str.len().fillna(0)"
+4,4,model_base_group_stats,True,2859.3016890952695,+383.09,車種名の先頭トークン（基本モデル名）は価格水準を強く決める。頻度と、モデル×年式の平均走行距離などの集計でモデル固有の価格帯を代理表現する。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.strip()
+base = s.str.split().str[0].fillna('')
+base = df['メーカー'].fillna('').str.lower() + '_' + base
+df['model_base_freq'] = base.map(base.value_counts()).fillna(0)
+df['model_base_med_age'] = base.map(df.groupby(base)['車齢'].median()).fillna(df['車齢'].median())
+df['model_base_med_miles'] = base.map(df.groupby(base)['走行距離_mile'].median()).fillna(df['走行距離_mile'].median())"
+4,5,condition_cyl_ordinal,True,2836.585491022816,+22.72,状態・名義状態は価格に直結する順序尺度で、気筒数も数値化するとエンジン規模の代理になる。文字列のままより順序情報を明示した方が効く。,"cond = df['状態'].fillna('').str.lower().str.strip()
+df['cond_ord'] = cond.map({'salvage':0,'fair':1,'good':2,'excellent':3,'like new':4,'new':5}).fillna(-1)
+tit = df['名義状態'].fillna('').str.lower().str.strip()
+df['title_ord'] = tit.map({'clean':3,'lien':2,'rebuilt':1,'salvage':0,'parts only':0,'missing':1}).fillna(-1)
+df['cyl_num'] = pd.to_numeric(df['気筒数'].fillna('').str.extract(r'(\d+)')[0], errors='coerce').fillna(-1)"
+4,6,engine_displacement_from_name,False,2842.600189977723,-6.01,"車種名に含まれる排気量表記（例: 5.7l, 2.0t）やターボ・ディーゼル表記はパワートレイン価値を直接示し、気筒数欠損時の補完にもなる。","s = df['車種名'].fillna('').str.lower()
+disp = pd.to_numeric(s.str.extract(r'(\d\.\d)\s*l?\b')[0], errors='coerce')
+df['name_displacement'] = disp.where((disp >= 1.0) & (disp <= 8.5)).fillna(-1)
+df['name_turbo_diesel'] = s.str.contains(r'turbo|\bt\b|tdi|diesel|ecoboost|supercharg|hemi', regex=True, na=False).astype(int)
+df['name_has_digit_trim'] = s.str.contains(r'\d', regex=True, na=False).astype(int)"
+4,7,full_model_name_stats,True,2835.640009605472,+0.95,先頭語だけのベース分類より細かい、正規化した車種名フル文字列（メーカー込み）の出現頻度と年式・走行の中央値は、グレード違いを含む車種固有の価格帯を捉えられる。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9]+', ' ', regex=True).str.strip()
+key = df['メーカー'].fillna('').str.lower() + '|' + s
+df['full_name_freq'] = key.map(key.value_counts()).fillna(0)
+df['full_name_med_age'] = key.map(df.groupby(key)['車齢'].median()).fillna(df['車齢'].median())
+df['full_name_med_miles'] = key.map(df.groupby(key)['走行距離_mile'].median()).fillna(df['走行距離_mile'].median())"
+4,8,miles_vs_model_norm,False,2857.60948605174,-21.97,同じ車種・年式グループの標準的な走行距離と比べて多いか少ないかは、価格の上下を直接説明する。絶対値より相対的な使い込み度合いが効くと考えた。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9]+', ' ', regex=True).str.strip()
+base = df['メーカー'].fillna('').str.lower() + '_' + s.str.split().str[0].fillna('')
+miles = df['走行距離_mile'].fillna(df['走行距離_mile'].median()).clip(lower=0)
+age = df['車齢'].fillna(df['車齢'].median()).clip(lower=0)
+exp = age.map(miles.groupby(age).median()).fillna(miles.median())
+df['miles_ratio_vs_age'] = miles / (exp + 1)
+gm = base.map(miles.groupby(base).median()).fillna(miles.median())
+df['miles_ratio_vs_model'] = miles / (gm + 1)"
+4,9,body_segment_flags,True,2815.6214574827345,+20.02,ボディ形状は価格帯に直結する（ピックアップ/バン/コンバーチブルは高め、セダンは低め）。車種名からも車体タイプを補完して欠損24%を埋める。,"s = df['車種名'].fillna('').str.lower()
+b = df['ボディ'].fillna('').str.lower()
+df['is_truck_like'] = (b.str.contains('pickup|truck', na=False) | s.str.contains(r'f-?[123]50|silverado|sierra|ram|tacoma|tundra|colorado|ranger|frontier|titan|canyon|dakota', regex=True, na=False)).astype(int)
+df['is_van'] = (b.str.contains('van|bus', na=False) | s.str.contains(r'\bvan\b|caravan|odyssey|sienna|transit|express|savana|promaster', regex=True, na=False)).astype(int)
+df['is_open_top'] = (b.str.contains('convertible', na=False) | s.str.contains(r'convertible|roadster|cabrio|spyder', regex=True, na=False)).astype(int)"
+4,10,state_market_stats,True,2801.338802335264,+14.28,州ごとに車両構成や相場水準が異なるため、州の頻度と州内の車齢・走行距離の中央値が地域相場の代理指標になる。,"st = df['州'].fillna('unk').str.lower().str.strip()
+df['state_freq'] = st.map(st.value_counts()).fillna(0)
+df['state_med_age'] = st.map(df.groupby(st)['車齢'].median()).fillna(df['車齢'].median())
+df['state_med_miles'] = st.map(df.groupby(st)['走行距離_mile'].median()).fillna(df['走行距離_mile'].median())"
+5,1,truck_grade_flags,True,3213.0951362333985,+102.69,車種名からピックアップ/大型トラック系や4x4・ディーゼルグレード表記を抽出すると、同年式でも価格が大きく高くなる層を切り分けられる。,"s = df['車種名'].fillna('').str.lower()
+df['is_truck_name'] = s.str.contains(r'f-?[1-3]50|silverado|sierra|ram\s*[1-3]500|tacoma|tundra|colorado|canyon|super duty|f-?[2-4]50|titan|frontier|ridgeline', regex=True, na=False).astype(int)
+df['is_4x4_name'] = s.str.contains(r'4x4|4wd|awd|quattro|4matic', regex=True, na=False).astype(int)
+df['is_hd_diesel_name'] = s.str.contains(r'diesel|duramax|cummins|powerstroke|power stroke|denali|laramie|lariat|platinum|limited|srw|drw|dually', regex=True, na=False).astype(int)"
+5,2,age_mileage_core,False,3225.474272196833,-12.38,車齢と走行距離は価格の主要因で、年間走行距離や対数変換・交互作用は非線形な減価を捉えやすい。,"age = df['車齢'].fillna(df['車齢'].median())
+mil = df['走行距離_mile'].fillna(df['走行距離_mile'].median())
+df['miles_per_year'] = mil / (age + 1)
+df['log_miles'] = np.log1p(mil)
+df['age_x_logmiles'] = age * np.log1p(mil)"
+5,3,brand_tier,True,3196.5675754453823,+16.53,メーカーは価格水準を強く決める。高級ブランド・スーパーカー系かどうかのフラグと、出品頻度（希少ブランドは高価格帯や特殊車が多い）を数値化する。,"mk = df['メーカー'].fillna('').str.lower()
+df['is_luxury_brand'] = mk.str.contains(r'bmw|mercedes|audi|lexus|infiniti|acura|cadillac|lincoln|volvo|jaguar|land rover|porsche|tesla|alfa|aston|ferrari|rolls|bentley|maserati', regex=True, na=False).astype(int)
+df['is_econ_brand'] = mk.str.contains(r'kia|hyundai|mitsubishi|suzuki|saturn|scion|fiat|mercury|pontiac|chrysler', regex=True, na=False).astype(int)
+df['brand_freq'] = mk.map(mk.value_counts()).fillna(0)"
+5,4,model_name_stats,True,3043.005579622872,+153.56,車種名を正規化したキーの出現頻度は、量販の安価モデルか希少・高級モデルかを示す。記述の長さ・単語数はグレード情報の詳しさ（高額装備の言及）を反映する。,"s = df['車種名'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
+key = s.str.split().str[:2].str.join(' ')
+df['model_key_freq'] = key.map(key.value_counts()).fillna(0)
+df['name_word_count'] = s.str.split().apply(len)
+df['name_len'] = s.str.len()"
+5,5,condition_cyl_ordinal,True,3033.995195218215,+9.01,状態のランクと気筒数は価格に直結する順序情報だが文字列のまま。数値化して欠損は中間値で埋めることで効きやすい。,"cond_map = {'salvage':0,'fair':1,'good':2,'excellent':3,'like new':4,'new':5}
+c = df['\u72b6\u614b'].fillna('').str.lower().str.strip()
+df['cond_ord'] = c.map(cond_map).fillna(-1)
+cyl = df['\u6c17\u7b52\u6570'].fillna('').str.extract(r'(\d+)')[0]
+df['cyl_num'] = pd.to_numeric(cyl, errors='coerce').fillna(-1)
+df['cyl_x_age'] = df['cyl_num'].clip(lower=0) * df['\u8eca\u9f62'].fillna(df['\u8eca\u9f62'].median())"
+5,6,luxury_sport_model_tokens,False,3036.4676613809474,-2.47,車種名にはグレードや高価格帯を示す語（スポーツ/高級/ハイブリッド/電気など）が含まれ、価格を大きく左右する。メーカーだけでは拾えないグレード情報を抽出する。,"s = df['\u8eca\u7a2e\u540d'].fillna('').str.lower()
+df['name_premium_token'] = s.str.contains(r'amg|m sport|\bsrt\b|gt\b|sport|turbo|supercharg|v8|v-8|hemi|coupe|convertible|premium|touring|titanium|sel\b|limited|z71|trd|awd', regex=True, na=False).astype(int)
+df['name_base_token'] = s.str.contains(r'\bbase\b|\bls\b|\ble\b|\bs\b|\bse\b|\bl\b|value|\bce\b|\bdx\b|\blx\b', regex=True, na=False).astype(int)
+df['name_electrified'] = s.str.contains(r'hybrid|electric|\bev\b|plug|prius|leaf|volt|tesla', regex=True, na=False).astype(int)"
+5,7,drive_body_size_combo,False,3058.4250212370603,-24.43,駆動・ボディ・サイズは価格に強く効くが欠損が多いので、明示的な数値化と欠損フラグ、および走行距離との交互作用で情報を引き出す。,"d = df['\u99c6\u52d5'].fillna('na').str.lower()
+df['drive_ord'] = d.map({'fwd':0,'rwd':1,'4wd':2}).fillna(-1)
+b = df['\u30dc\u30c7\u30a3'].fillna('na').str.lower()
+df['is_truck_body'] = b.str.contains(r'truck|pickup|van', regex=True, na=False).astype(int)
+sz = df['\u30b5\u30a4\u30ba'].fillna('na').str.lower()
+df['size_ord'] = sz.map({'sub-compact':0,'compact':1,'mid-size':2,'full-size':3}).fillna(-1)"
+5,8,listing_completeness,False,3053.588005936725,-19.59,未入力の多い出品は情報が乏しく安価な車両が多い傾向があり、欠損数そのものが価格の代理指標になる。名義状態の悪さも大きな減価要因。,"cols = ['\u72b6\u614b','\u6c17\u7b52\u6570','\u99c6\u52d5','\u30b5\u30a4\u30ba','\u30dc\u30c7\u30a3','\u8272','\u71c3\u6599','\u540d\u7fa9\u72b6\u614b']
+cols = [c for c in cols if c in df.columns]
+df['n_missing_opts'] = df[cols].isna().sum(axis=1)
+t = df['\u540d\u7fa9\u72b6\u614b'].fillna('').str.lower()
+df['title_not_clean'] = (~t.str.contains('clean', na=False)).astype(int)
+f = df['\u71c3\u6599'].fillna('').str.lower()
+df['is_diesel_fuel'] = f.str.contains('diesel', na=False).astype(int)"
+5,9,mileage_vs_peer,True,3024.819359114644,+9.18,同じ車種キー内での走行距離・車齢の相対位置は、その車が同型車の中で高年式・低走行の「良個体」かを表し、価格差の説明になる。,"s = df['\u8eca\u7a2e\u540d'].fillna('').str.lower().str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
+key = s.str.split().str[:2].str.join(' ')
+mil = df['\u8d70\u884c\u8ddd\u96e2_mile'].fillna(df['\u8d70\u884c\u8ddd\u96e2_mile'].median())
+age = df['\u8eca\u9f62'].fillna(df['\u8eca\u9f62'].median())
+g_m = mil.groupby(key).transform('median')
+g_a = age.groupby(key).transform('median')
+df['mile_vs_model'] = mil - g_m
+df['age_vs_model'] = age - g_a
+df['mile_ratio_model'] = mil / (g_m + 1.0)"
+5,10,name_numeric_token,True,2986.456048660164,+38.36,車種名に含まれる数字トークン（1500/250/328など）は積載クラスや排気量グレードを表し価格差に直結する。またフル車種名の希少度も特殊仕様を示す。,"s = df['\u8eca\u7a2e\u540d'].fillna('').str.lower()
+num = s.str.extract(r'(?<![a-z0-9])(\d{3,4})(?![0-9])')[0]
+df['name_num_token'] = pd.to_numeric(num, errors='coerce').fillna(-1)
+full = s.str.replace(r'[^a-z0-9 ]', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
+df['full_name_freq'] = full.map(full.value_counts()).fillna(0)"

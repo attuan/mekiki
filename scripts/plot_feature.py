@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_protocol import ROOT  # noqa: E402
+from plot_style import use_japanese_font  # noqa: E402
 
-plt.rcParams["font.family"] = "Hiragino Sans"
-plt.rcParams["axes.unicode_minus"] = False
+use_japanese_font()
 OUT = ROOT / "results"
 
 LADDER = [
@@ -107,15 +107,15 @@ UNSEEN = [
 
 
 def fig_unseen() -> None:
-    """既知／未知の車種名で分けた MAE（P2）。"""
+    """既知／未知の model で分けた MAE（P2）。"""
     import numpy as np
     fig, ax = plt.subplots(figsize=(8.6, 4.6))
     x = np.arange(len(UNSEEN))
     w = 0.38
     known = [k for _, k, _ in UNSEEN]
     unseen = [u for _, _, u in UNSEEN]
-    b1 = ax.bar(x - w / 2, known, w, label="既知の車種名", color="tab:blue")
-    b2 = ax.bar(x + w / 2, unseen, w, label="未知の車種名", color="tab:red")
+    b1 = ax.bar(x - w / 2, known, w, label="既知の model", color="tab:blue")
+    b2 = ax.bar(x + w / 2, unseen, w, label="未知の model", color="tab:red")
     for bars in (b1, b2):
         for b in bars:
             ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 30,
@@ -127,7 +127,7 @@ def fig_unseen() -> None:
     ax.legend()
     ax.grid(axis="y", alpha=0.3)
     ax.set_title("機能A の既定エンコーダは未知語に強い側に着地した\n"
-                 "（未知の車種名は test 行の 10.7%）", fontsize=12)
+                 "（未知の model は test 行の 10.7%）", fontsize=12)
     fig.tight_layout()
     fig.savefig(OUT / "feature_unseen.png", dpi=150)
     print("保存: results/feature_unseen.png")

@@ -54,7 +54,7 @@ def main() -> None:
     df = load_dataset(dataset=VEHICLES, sample=args.sample)
     df[RULE_COL] = df[TEXT].map(normalize_model)
     tag = f"{len(df):,}行"
-    print(f"\n車種名 {df[TEXT].nunique():,} 種類 → 手書きルール正規化後 "
+    print(f"\nmodel {df[TEXT].nunique():,} 種類 → 手書きルール正規化後 "
           f"{df[RULE_COL].nunique():,} 種類\n")
 
     runs = [
@@ -62,7 +62,7 @@ def main() -> None:
          make_lgbm(TARGET, NUM, BOOL, CAT), "全行での下限"),
         (f"[全行] B2 + 手書きルール正規化",
          make_lgbm(TARGET, NUM, BOOL, CAT + [RULE_COL]), "機能A が置き換えたい相手"),
-        (f"[全行] C2 + 車種名の文字TF-IDF",
+        (f"[全行] C2 + model の文字TF-IDF",
          make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "char"), "ルールを書かない従来手法"),
         (f"[全行] F(c) + 機能A・埋め込み列",
          make_lgbm(TARGET, NUM, BOOL, CAT, extra=feature_extra()), "unfold Feature"),
@@ -83,7 +83,7 @@ def main() -> None:
 
     tbl = breakdown(df, oof)
     print("=" * 78)
-    print(f"既知／未知の車種名で分けた MAE（USD・{tag}）")
+    print(f"既知／未知の model で分けた MAE（USD・{tag}）")
     print("=" * 78)
     print(tbl.to_string(index=False, float_format=lambda v: f"{v:,.0f}"))
     dst = ROOT / "results" / "fullscale_unseen_breakdown.csv"

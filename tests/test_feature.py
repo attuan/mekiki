@@ -54,7 +54,7 @@ def test_推論時は学習時の定数語を使い回す():
     assert f.transform(one).iloc[0] == "Z"
 
 
-# --- 01 教師ラベルの起点（PRD §7-1 の3つの入口）------------------------
+# --- 01 教師ラベルの起点（PRD 機能A の 01・3つの入口）------------------
 
 def test_値の名前だけでも分類できる():
     df = sample()
@@ -72,7 +72,7 @@ def test_人手ラベルを渡せる():
 
 
 def test_ラベルもvaluesも無ければ止まる():
-    with pytest.raises(UnfoldError, match="PRD §7-1"):
+    with pytest.raises(UnfoldError, match="PRD 機能A の 01"):
         Feature(source="タイトル").fit(sample())
 
 

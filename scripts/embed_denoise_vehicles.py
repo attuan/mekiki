@@ -1,4 +1,4 @@
-"""Craigslist の車種名から、ノイズを除いた版を作って埋め込む（.venv-embed で実行）。
+"""Craigslist の model から、ノイズを除いた版を作って埋め込む（.venv-embed で実行）。
 
     .venv-embed/bin/python scripts/embed_denoise_vehicles.py
 
@@ -13,7 +13,7 @@
                       "*" や "/" 以降は宣伝文なので落とす
   V13 両方
 
-V2（定数語の除去）は入れない。車種名は 19,739 種類の自由記述で、
+V2（定数語の除去）は入れない。model は 19,739 種類の自由記述で、
 出現率 90% を超えるトークンが存在しないため空振りになる（実行前に確認済み）。
 
 行ではなく文字列の種類ごとに埋め込む点は embed_vehicles.py と同じ。
@@ -36,17 +36,17 @@ SRC = ROOT / "sampledata" / "processed" / "vehicles_multi_clean.parquet"
 OUT_DIR = ROOT / "sampledata" / "processed"
 MODEL_NAME = "intfloat/multilingual-e5-small"
 PREFIX = "query: "
-COL = "車種名"
-# 別の構造化列にすでに入っている情報。ここに挙げた列の値は車種名から消す
-KNOWN = ["メーカー", "州", "燃料", "駆動", "変速機", "サイズ", "ボディ", "色", "気筒数"]
-# Craigslist の車種名は "*" と "/" で宣伝文をつなぐ
+COL = "model"
+# 別の構造化列にすでに入っている情報。ここに挙げた列の値は model から消す
+KNOWN = ["manufacturer", "state", "fuel", "drive", "transmission", "size", "type", "paint_color", "cylinders"]
+# Craigslist の model は "*" と "/" で宣伝文をつなぐ
 BREAK_CHARS = "*/|,;+"
 
 
 def main() -> None:
     df = pd.read_parquet(SRC, columns=[COL] + KNOWN)
-    # 「車種名 × 他の列の値」の組み合わせ単位で作る必要があるので、
-    # 重複潰しは (車種名, 既出語) の組で行う
+    # 「model × 他の列の値」の組み合わせ単位で作る必要があるので、
+    # 重複潰しは (model, 既出語) の組で行う
     key = df[[COL] + KNOWN].fillna("").astype(str)
     uniq = key.drop_duplicates().reset_index(drop=True)
     print(f"入力: {SRC.name}  {len(df):,} 行 → 組み合わせ {len(uniq):,} 種類")

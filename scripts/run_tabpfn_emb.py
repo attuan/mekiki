@@ -108,9 +108,11 @@ def main() -> int:
               f"→ 5-fold の見積もり {dt * (4405 / 500) * 5 / 60:.0f} 分")
         return 0
 
+    import tabpfn  # 版は記録に残す。2.2.1 と 8.5.0 では数字が違う
     name = f"G  TabPFN・構造化列フル+タイトル埋め込み{args.dims}次元"
     cross_validate(name, fn, df,
-                   note=f"tabpfn / CPU / n_estimators={args.n_estimators} / "
+                   note=f"tabpfn {tabpfn.__version__} / CPU / "
+                        f"n_estimators={args.n_estimators} / "
                         f"埋め込みは定数語除去版を PCA{args.dims}。"
                         f"LightGBM の D3(12.38) と同じ問いを TabPFN で")
     return 0

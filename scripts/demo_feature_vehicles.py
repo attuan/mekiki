@@ -5,22 +5,22 @@
 シエンタ（単一車種）での測定は `docs/2026-08-29-feature-skeleton.md` に済んでいる。
 そこで出た結論のうち、**「値の名前だけを起点にすれば人手ラベルより強い」は
 シエンタ固有の可能性がある**と書いた。グレード名がタイトルに文字どおり
-書かれているためで、Craigslist の `車種名`（19,739種類の自由記述）では
+書かれているためで、Craigslist の `model`（19,739種類の自由記述）では
 同じ条件が成り立たない。ここではそれを実際に確かめる。
 
 比較の基準（すべて同じ 60,000 行・同じ 5-fold・既測）:
 
     A2 LightGBM・構造化列のみ            3,234 USD
-    B2 + 車種名を手書きルールで正規化      2,783 USD  ← 機能A が置き換えたい相手
-    C2 + 車種名の文字TF-IDF               2,640 USD
-    D1 + 車種名の埋め込み（e5-small）      2,620 USD
+    B2 + model を手書きルールで正規化      2,783 USD  ← 機能A が置き換えたい相手
+    C2 + model の文字TF-IDF               2,640 USD
+    D1 + model の埋め込み（e5-small）      2,620 USD
     D4 + 埋め込みと文字TF-IDF の併用        2,596 USD  ← 現在の最良
 
 問いは3つ。
 
   1. 機能A の API を通しても、素で書いた特徴量と同じ精度が出るか（実装の健全性）
-  2. 値の名前だけの起点は、自由記述データでも人手ラベルに勝つか（§7-1 の一般性）
-  3. confidence によるルーティングは複数車種でも機能するか（§6.3 の前提）
+  2. 値の名前だけの起点は、自由記述データでも人手ラベルに勝つか（教師ラベルの起点の一般性）
+  3. confidence によるルーティングは複数車種でも機能するか（信頼度ルーティングの前提）
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from unfold import CharTfidfEncoder, Feature, PrecomputedEncoder  # noqa: E402
 
 TARGET = VEHICLES.target
 EMB_PATH = ROOT / "sampledata" / "processed" / "vehicles_emb_model_e5small.parquet"
-GENERATED = "車種名_生成"
+GENERATED = "model_generated"
 N_DECLARED = 60       # 利用者が宣言する値の数
 N_SEED_LABELS = 200   # 仕様書が前提にしている人手ラベルの件数
 
@@ -57,7 +57,7 @@ N_SEED_LABELS = 200   # 仕様書が前提にしている人手ラベルの件�
 def declared_values(df: pd.DataFrame) -> list[str]:
     """利用者が `values=[...]` に書く想定の値を作る。
 
-    「よく出る車種名を60個書き出す」という、カタログを見れば書ける作業を模す。
+    「よく出る model を60個書き出す」という、カタログを見れば書ける作業を模す。
     **価格は一切見ていない**ので目的変数のリークにはあたらない。
     """
     return (df[RULE_COL].value_counts().head(N_DECLARED).index.tolist())
@@ -159,7 +159,7 @@ def main() -> None:
     df[RULE_COL] = df[TEXT].map(normalize_model)
     values = declared_values(df)
     covered = df[RULE_COL].isin(values).mean()
-    print(f"\n車種名 {df[TEXT].nunique():,} 種類 → 手書きルール正規化後 "
+    print(f"\nmodel {df[TEXT].nunique():,} 種類 → 手書きルール正規化後 "
           f"{df[RULE_COL].nunique():,} 種類")
     print(f"宣言した値 {len(values)} 個で実データの {covered:.1%} をカバー")
     print(f"  例: {values[:12]}")

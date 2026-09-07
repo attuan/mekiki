@@ -12,14 +12,14 @@
   ・しかし文字TF-IDF が強く、埋め込みを足しても最良値は更新できなかった
   ・理由は「単一車種では正規表現が完璧に効いてしまう」から
 
-複数車種ではその前提が崩れる。車種名は 19,739 種類あり、6割が1回しか出てこない。
-テストに出てくる車種名の約1割は訓練データに存在しない（未知語）。
+複数車種ではその前提が崩れる。model は 19,739 種類あり、6割が1回しか出てこない。
+テストに出てくる model の約1割は訓練データに存在しない（未知語）。
 そこで問いは2つ。
 
-  D1「ルールを書かずに車種名を扱えるか」★本命
+  D1「ルールを書かずに model を扱えるか」★本命
       手書きルールで正規化した B2、文字TF-IDF の C2 と、同じ土俵で比べる。
 
-  未知の車種名の行だけを取り出して MAE を比べる ★複数車種で初めて測れる問い
+  未知の model の行だけを取り出して MAE を比べる ★複数車種で初めて測れる問い
       カテゴリ変数は未知語を欠損としてしか扱えない。TF-IDF は訓練語彙に無い
       部分文字列を落とす。埋め込みは学習済みモデルなので未知の文字列にも
       ベクトルを出せる。この差が出るなら、それが複数車種に広げた意味になる。
@@ -54,9 +54,9 @@ EMB_PREFIX = "memb_"
 
 
 def attach_embeddings(df: pd.DataFrame) -> pd.DataFrame:
-    """車種名の埋め込みを横付けする。
+    """model の埋め込みを横付けする。
 
-    埋め込みは「車種名の種類」ごとに計算してあるので、突き合わせは
+    埋め込みは「model の種類」ごとに計算してあるので、突き合わせは
     行番号ではなく文字列そのものをキーにする（間引いた行でもずれない）。
     """
     if not EMB_PATH.exists():
@@ -71,7 +71,7 @@ def attach_embeddings(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"結合で行数が変わりました {len(df)} → {len(out)}")
     miss = out[f"{EMB_PREFIX}0"].isna().sum()
     if miss:
-        raise ValueError(f"埋め込みが見つからない車種名が {miss} 件あります")
+        raise ValueError(f"埋め込みが見つからない model が {miss} 件あります")
     return out
 
 
@@ -92,7 +92,7 @@ def emb_extra(pca_dim: int | None = None):
     return extra
 
 
-# --- 未知の車種名だけを取り出した比較 ---------------------------------
+# --- 未知の model だけを取り出した比較 ---------------------------------
 
 def unseen_mask(df: pd.DataFrame, fold: np.ndarray, col: str) -> np.ndarray:
     """各行について「自分が test だった fold の train に、その値が無かったか」。
@@ -110,11 +110,11 @@ def unseen_mask(df: pd.DataFrame, fold: np.ndarray, col: str) -> np.ndarray:
 
 
 def breakdown(df: pd.DataFrame, results: dict[str, dict]) -> pd.DataFrame:
-    """既知／未知の車種名に分けて MAE を出す。"""
+    """既知／未知の model に分けて MAE を出す。"""
     y = df[TARGET].to_numpy(dtype=float)
     fold = next(iter(results.values()))["fold"]
     unseen = unseen_mask(df, fold, TEXT)
-    print(f"\ntest 行のうち車種名が train に無かった行: "
+    print(f"\ntest 行のうち model が train に無かった行: "
           f"{unseen.sum():,} / {len(df):,}（{unseen.mean()*100:.1f}%）")
 
     rows = []
@@ -133,21 +133,21 @@ def main() -> None:
     df = load_dataset(dataset=VEHICLES, sample=N_SAMPLE)
     df[RULE_COL] = df[TEXT].map(normalize_model)
     df = attach_embeddings(df)
-    print(f"  埋め込み: {EMB_PATH.name} を車種名で結合（384次元）")
+    print(f"  埋め込み: {EMB_PATH.name} を model で結合（384次元）")
 
     runs = [
-        ("D1 構造化列+車種名の埋め込み",
+        ("D1 構造化列+model の埋め込み",
          make_lgbm(TARGET, NUM, BOOL, CAT, extra=emb_extra()),
          "★本命。B2(手書きルール)・C2(文字TF-IDF)と同じ土俵での比較"),
         ("D2 D1のPCA64次元版",
          make_lgbm(TARGET, NUM, BOOL, CAT, extra=emb_extra(pca_dim=64)),
          "384次元を64次元に圧縮。次元数が効いているかの確認"),
-        ("D3 全部乗せ(車種名カテゴリ+埋め込み)",
+        ("D3 全部乗せ(model カテゴリ+埋め込み)",
          make_lgbm(TARGET, NUM, BOOL, CAT + [TEXT], extra=emb_extra()),
-         "車種名をカテゴリとしても埋め込みとしても入れた場合"),
+         "model をカテゴリとしても埋め込みとしても入れた場合"),
         ("D4 埋め込み+文字TF-IDF",
          make_lgbm(TARGET, NUM, BOOL, CAT, TEXT, "char", extra=emb_extra()),
-         "未知の車種名に強い文字TF-IDF と、既知に強い埋め込みの併用"),
+         "未知の model に強い文字TF-IDF と、既知に強い埋め込みの併用"),
     ]
 
     oof: dict[str, dict] = {}
@@ -171,12 +171,12 @@ def main() -> None:
                        dataset=VEHICLES, oof_out=out)
         oof[name] = out
 
-    order = ["B2 手書きルール", "C2 文字TF-IDF", "D1 構造化列+車種名の埋め込み",
+    order = ["B2 手書きルール", "C2 文字TF-IDF", "D1 構造化列+model の埋め込み",
              "D4 埋め込み+文字TF-IDF"]
     tbl = breakdown(df, {k: oof[k] for k in order})
     print()
     print("=" * 78)
-    print("既知／未知の車種名で分けた MAE（USD）")
+    print("既知／未知の model で分けた MAE（USD）")
     print("=" * 78)
     print(tbl.to_string(index=False, float_format=lambda v: f"{v:,.0f}"))
     tbl.to_csv(ROOT / "results" / "vehicles_unseen_breakdown.csv",

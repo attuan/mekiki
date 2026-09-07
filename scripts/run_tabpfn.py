@@ -14,9 +14,13 @@ LightGBM のように木を育てる工程が無い。
     `features.py` は import できない。特徴量づくりをここに自前で持っているのは
     そのため（LightGBM 側と同じ列構成になるよう eval_protocol の定数を共有する）。
 
-    このマシン（Intel Mac）に入る torch は 2.2.2 が上限。TabPFN 最新版(8.x)は
-    torch>=2.5 を要求するので入らない。2.2.1 を使う。これは PRD が R6 として
-    引用している Nature 2025 の版そのものなので、比較対象として適切。
+    版に注意。使うのは **tabpfn 2.2.1** で、これは PRD が R6 として引用している
+    Nature 2025 の版そのものである。ただし 8/29 に 2.2.1 を選んだ理由（当時の
+    測定機 Intel Mac の torch が 2.2.2 上限で、8.x の torch>=2.5 を満たせなかった）は
+    ノードへの移行で消えた。いまの理由は別で、**7.1.0 以降は重みの取得に
+    Prior Labs のライセンス承諾が要る**ためである
+    （docs/2026-09-01-embed-env-rebuild.md）。版が変われば数字も変わるので、
+    leaderboard の備考には tabpfn.__version__ を自動で書く。
 
 実行:
     TABPFN_DISABLE_TELEMETRY=1 .venv-embed/bin/python scripts/run_tabpfn.py --probe
@@ -153,9 +157,10 @@ def main() -> int:
         probe(df, target)
         return 0
 
+    import tabpfn  # 版は記録に残す。2.2.1 と 8.5.0 では数字が違う
     name = f"F  TabPFN・構造化列フル(n_est={args.n_estimators})"
     note = ("表形式の基盤モデル。LightGBM の B と同じ列構成。"
-            f"tabpfn 2.2.1 / CPU / n_estimators={args.n_estimators}。"
+            f"tabpfn {tabpfn.__version__} / CPU / n_estimators={args.n_estimators}。"
             "LLMを使わない側の到達点（PRD の R6・S5）")
     print(f"[{name}]")
     t0 = time.time()

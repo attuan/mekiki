@@ -1,4 +1,4 @@
-"""Craigslist（複数車種）の車種名を埋め込みベクトルに変換する。
+"""Craigslist（複数車種）の model を埋め込みベクトルに変換する。
 
 **このスクリプトは隔離環境 .venv-embed で動かす。**（主環境には torch を入れない）
 
@@ -7,7 +7,7 @@
 
 シエンタの embed_text.py と同じモデル・同じ設定。違うのは対象列だけで、
 シエンタの「タイトル（＝グレード名を含む生文）」にあたるのが
-Craigslist の `車種名`（model 列）になる。
+Craigslist の `model`（model 列）になる。
 
     'f-150 raptor arizona raptor*rust free*icon level kit*tech pkg*pano roof'
     '2500 slt / quad cab / 4x4 / leather / 5.9 l high output / cummins diesel'
@@ -15,7 +15,7 @@ Craigslist の `車種名`（model 列）になる。
 19,739 種類の自由記述で、6割が1回しか出てこない。正規表現で芯を抜くのが
 難しいのはここ。埋め込みならルールなしで扱えるかを測るための入力を作る。
 
-**行ではなく「文字列の種類」ごとに埋め込む。** 20万行のうち車種名の種類は
+**行ではなく「文字列の種類」ごとに埋め込む。** 20万行のうち model の種類は
 19,739 しかないので、重複を潰してから計算すれば10分の1以下の時間で済む。
 突き合わせは文字列そのものをキーにする。
 
@@ -36,7 +36,7 @@ OUT = ROOT / "sampledata" / "processed" / "vehicles_emb_model_e5small.parquet"
 
 MODEL_NAME = "intfloat/multilingual-e5-small"
 PREFIX = "query: "        # e5 系は接頭辞込みで学習されている
-COL = "車種名"
+COL = "model"
 
 
 def main() -> None:

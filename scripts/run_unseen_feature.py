@@ -1,12 +1,12 @@
-"""P2 — 未知の車種名だけで機能A を測り直す。
+"""P2 — 未知の model だけで機能A を測り直す。
 
     .venv/bin/python scripts/run_unseen_feature.py
 
 **なぜ未知語を切り出すのか。** テスト行の約1割は、訓練データに1度も出てこない
-車種名を持つ。これは実運用そのもの（新型車、書き方の揺れ、珍しいグレード）で、
+model を持つ。これは実運用そのもの（新型車、書き方の揺れ、珍しいグレード）で、
 かつ手法ごとに得意不得意がはっきり分かれる場所である。既測（`docs/2026-08-29-vehicles-multi.md`）:
 
-    手法              既知の車種名   未知の車種名
+    手法              既知の model   未知の model
     手書きルール          2,623        4,118
     文字TF-IDF           2,511      **3,715**   ← 未知に強い
     e5 埋め込み        **2,470**       3,873    ← 既知に強い
@@ -121,7 +121,7 @@ def main() -> None:
              "F(d)' 機能A・埋め込み列＋文字TF-IDF"]
     tbl = breakdown(df, {k: oof[k] for k in order})
     print("=" * 78)
-    print("既知／未知の車種名で分けた MAE（USD）")
+    print("既知／未知の model で分けた MAE（USD）")
     print("=" * 78)
     print(tbl.to_string(index=False, float_format=lambda v: f"{v:,.0f}"))
     tbl.to_csv(ROOT / "results" / "feature_unseen_breakdown.csv",

@@ -4,11 +4,11 @@
 
 前提: .venv-embed/bin/python scripts/embed_denoise.py を先に実行しておくこと。
 
-測る問いは3つ。1と2が今回の本題（PRD §7-2・機能B の前提）、3は副作用の確認。
+測る問いは3つ。1と2が今回の本題（近傍の選び方・機能B の前提）、3は副作用の確認。
 
   Q1 グレードを分離できるか
      同じグレード同士の類似度が、違うグレード同士より高くなっているか。
-     生テキストでは 0.915 対 0.912 でほぼ差がなかった（PRD §2.2-d 反証2）。
+     生テキストでは 0.915 対 0.912 でほぼ差がなかった（機能B の証拠設計に直結）。
      単純な平均の差は文の長さに左右されるので、順位で見る AUC も出す。
      AUC 0.5 = まったく区別できない、1.0 = 完全に分離できている。
 
@@ -102,7 +102,7 @@ def make_knn(V: np.ndarray, k: int = K, numeric: np.ndarray | None = None,
     """意味的近傍 k 件の価格中央値を予測値として返す fit_predict。
 
     numeric と w を渡すと、距離に数値列（車齢・走行距離）の差を混ぜる
-    （§7-2 の対策案「数値列を含めた距離にする」の実装）。
+    （近傍の対策案「数値列を含めた距離にする」の実装）。
     数値列は訓練データの標準偏差で割って尺度を揃える。
     """
     def fit_predict(train, test):
@@ -125,7 +125,7 @@ def make_knn(V: np.ndarray, k: int = K, numeric: np.ndarray | None = None,
 
 
 def make_knn_banded(V: np.ndarray, k: int = K, band: float = 0.2):
-    """§7-2 の対策案b「価格帯で絞ってから意味的に並べる」の実装。
+    """近傍の対策案b「価格帯で絞ってから意味的に並べる」の実装。
 
     推論時に本当の価格は使えないので、**構造化列だけの LightGBM で粗く予測し、
     その ±band の価格帯にある訓練事例だけを候補にする。**そのうえで意味的に
@@ -233,7 +233,7 @@ def main() -> None:
                        note="意味的近傍k件の価格中央値。機能B の証拠の質を測る")
         print()
 
-    print("[kNN 距離に車齢・走行距離を混ぜる（§7-2 の対策案a）]")
+    print("[kNN 距離に車齢・走行距離を混ぜる（対策案a）]")
     best = max(embs, key=lambda n: grade_separation(embs[n], grade)["AUC"])
     print(f"  分離が最も良かった版を使う: {best}")
     for w in (0.05, 0.15, 0.3):
@@ -242,7 +242,7 @@ def main() -> None:
                        note="コサイン類似度から車齢・走行距離の標準化距離を引く")
         print()
 
-    print("[kNN 価格帯で絞ってから意味的に並べる（§7-2 の対策案b）]")
+    print("[kNN 価格帯で絞ってから意味的に並べる（対策案b）]")
     for name in ("V0 生（現状）", best):
         label = f"kNN{K} {name} + 価格帯±20%で事前絞り込み"
         print(f"  {label}")
