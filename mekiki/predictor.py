@@ -47,13 +47,15 @@ put to Jev (TypeSafe AI's System One model) as one typed question: the options a
 the statistical models, each described by its prediction for that row, and the state
 is the row plus its similar cases. Jev answers in a few hundred milliseconds with a
 probability per model, and the prediction is the probability-weighted average of the
-models' outputs. `signal="jev"` routes by that confidence (1 minus it), so the rows
-Jev is unsure about are the ones that reach the LLM: statistical models, then Jev,
-then the LLM. Without `TYPESAFE_API_KEY` (or `AI_GATEWAY_API_KEY`) the tier is skipped.
+models' outputs. The rows the models disagree on still go to the LLM, so the chain is
+statistical models, then Jev for the rows that stay, then the LLM. Keep the default
+routing signal: Jev's confidence says which model to trust, not how hard the row is,
+and in measurements `signal="jev"` chose the rows to escalate worse than the model
+disagreement did. Without `TYPESAFE_API_KEY` (or `AI_GATEWAY_API_KEY`) the tier is skipped.
 
     model = EvidenceRegressor(target="price", unit="USD", numeric=["age", "odometer"],
                               categorical=["manufacturer"], text="model",
-                              jev=True, signal="jev", escalate_rate=0.2)
+                              jev=True, escalate_rate=0.2)
 
 Wording tuned for used-car prices is kept in the `USED_CAR` preset, distinct from the
 generic default wording.
@@ -881,7 +883,9 @@ class EvidencePredictor:
         "unseen" ... rows containing category levels or words absent from the training
         data. Meant for operation where new models and grades keep arriving.
         "jev" ... 1 minus Jev's confidence in its weighting of the models (needs
-        `jev`). Jev is then asked for every row, including in `plan()`.
+        `jev`). Jev is then asked for every row, including in `plan()`. Measured
+        worse than "disagreement" at low escalation rates; `jev=True` alone already
+        uses Jev for the rows that are not escalated.
         For a custom signal pass `f(X, evidence) -> array`. **Larger means send to the
         LLM.**
 

@@ -124,5 +124,67 @@
     "socials": {
       "github": "https://github.com/attuan/mekiki"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/introduction",
+      "destination": "/index"
+    },
+    {
+      "source": "/home",
+      "destination": "/index"
+    },
+    {
+      "source": "/docs",
+      "destination": "/index"
+    },
+    {
+      "source": "/getting-started",
+      "destination": "/index"
+    },
+    {
+      "source": "/quickstart",
+      "destination": "/tutorials/quickstart"
+    },
+    {
+      "source": "/semantic-encoder",
+      "destination": "/tutorials/semantic_encoder"
+    },
+    {
+      "source": "/semantic_encoder",
+      "destination": "/tutorials/semantic_encoder"
+    },
+    {
+      "source": "/tutorials/semantic-encoder",
+      "destination": "/tutorials/semantic_encoder"
+    },
+    {
+      "source": "/knowledge-encoder",
+      "destination": "/tutorials/knowledge_encoder"
+    },
+    {
+      "source": "/knowledge_encoder",
+      "destination": "/tutorials/knowledge_encoder"
+    },
+    {
+      "source": "/tutorials/knowledge-encoder",
+      "destination": "/tutorials/knowledge_encoder"
+    },
+    {
+      "source": "/evidence-predictor",
+      "destination": "/tutorials/evidence_predictor"
+    },
+    {
+      "source": "/evidence_predictor",
+      "destination": "/tutorials/evidence_predictor"
+    },
+    {
+      "source": "/tutorials/evidence-predictor",
+      "destination": "/tutorials/evidence_predictor"
+    },
+    {
+      "source": "/diagnose",
+      "destination": "/tutorials/diagnose"
+    }
+  ]
 }

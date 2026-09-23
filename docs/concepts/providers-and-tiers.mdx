@@ -37,10 +37,10 @@ col = SemanticEncoder(source="description", values=["dealer", "private"],
 
 # EvidenceRegressor / EvidenceClassifier: rows that are not routed to the LLM are no longer
 # answered by the first statistical model alone. Jev is asked which model's prediction to
-# trust and the answer is the probability-weighted average. signal="jev" routes the rows
-# Jev is unsure about to the LLM.
+# trust and the answer is the probability-weighted average. The rows the models disagree
+# on still go to the LLM (keep the default signal; see below).
 model = EvidenceRegressor(target="price", numeric=["age", "odometer"],
-                          jev=True, escalate_rate=0.2, signal="jev")
+                          jev=True, escalate_rate=0.2)
 
 # KnowledgeEncoder: category / binary attributes are asked to Jev first, per key value;
 # keys it answers confidently never reach the LLM. Numeric attributes always go to the LLM.
@@ -52,6 +52,48 @@ cols = KnowledgeEncoder(keys=["manufacturer", "model"], attribute="body style",
 
 Provenance records which tier answered (`source` / `origin` is `human`, `model`, `jev` or
 `llm`), and `cost()` / `plan()` report the Jev and LLM bills separately.
+
+## What the middle tier buys
+
+Measured through the Vercel AI Gateway, comparing each part with and without Jev on the same
+rows and the same LLM answers.
+
+**`SemanticEncoder`: the LLM is called for half to a fifth of the rows, for a small loss in
+accuracy.** Every row was sent to the fallback; Jev kept the answers it gave with confidence
+0.7 or more and passed the rest on.
+
+| task | labels to start from | LLM only | Jev → LLM | rows that reached the LLM | accuracy of the rows Jev settled |
+|---|---|---:|---:|---:|---:|
+| used-car model name → body type (Craigslist, 400 rows) | value names only | 0.708 | 0.692 | 400 → 190 | 0.786 |
+| same | 200 human labels | 0.738 | 0.720 | 400 → 71 | 0.736 |
+| tasting note → grape variety (wine reviews, 400 rows) | value names only | 0.785 | 0.745 | 399 → 176 | 0.776 |
+| same | 200 human labels | 0.792 | 0.760 | 398 → 133 | 0.835 |
+
+The rows Jev answers confidently are as accurate as the LLM's answers, so the threshold picks
+the right rows to keep. Jev alone, with no LLM behind it, reaches only 0.44–0.67: the rows it is
+not confident about stay unanswered. **Jev is a tier in front of the LLM, not a replacement.**
+
+**`EvidenceRegressor` / `EvidenceClassifier`: Jev's weighting of the models helps on
+regression and multi-class tasks, not on a binary one.** The rows not sent to the LLM are
+answered by the Jev-weighted average instead of the first model; routing uses the default
+disagreement signal. 600 rows each.
+
+| data | models only | Jev weighting, no LLM | 30% to the LLM: without → with Jev | every row to the LLM |
+|---|---:|---:|---:|---:|
+| used-car price (MAE in USD, lower is better) | 3,043 | **2,883** | 2,729 → **2,698** | 2,249 |
+| pet adoption speed, 5 classes (accuracy) | 0.397 | **0.417** | 0.398 → **0.423** | 0.428 |
+| telecom churn, yes/no (accuracy) | 0.800 | 0.790 | 0.818 → 0.807 | 0.822 |
+
+Without a single LLM call, Jev recovers 20% (used cars) and 63% (adoption speed) of the gain
+that sending every row to the LLM gives. On churn the models already agree and there is little
+to reweight. **Keep the default routing signal.** `signal="jev"` (escalate the rows Jev is
+least sure about) was worse than model disagreement at low escalation rates: Jev's confidence
+says which model to trust, not how hard the row is.
+
+**`KnowledgeEncoder`: Jev settled 75% of the key values, with the same agreement.** For body
+type per used-car model (306 key values), Jev answered 229; the rest went to the LLM in 3
+requests. Agreement with the data's own `type` column was 0.768, against 0.766 with the LLM
+alone.
 
 ## One client per provider
 

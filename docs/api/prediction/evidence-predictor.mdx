@@ -114,7 +114,9 @@ Predictor that lets the LLM make the final call from statistical models and simi
   "unseen" ... rows containing category levels or words absent from the training
   data. Meant for operation where new models and grades keep arriving.
   "jev" ... 1 minus Jev's confidence in its weighting of the models (needs
-  `jev`). Jev is then asked for every row, including in `plan()`.
+  `jev`). Jev is then asked for every row, including in `plan()`. Measured
+  worse than "disagreement" at low escalation rates; `jev=True` alone already
+  uses Jev for the rows that are not escalated.
   For a custom signal pass `f(X, evidence) -> array`. **Larger means send to the
   LLM.**
 </ParamField>

@@ -6,9 +6,12 @@
 </p>
 
 <p align="center">
+  <a href="https://attuan.mintlify.site/"><img alt="Documentation" src="https://img.shields.io/badge/docs-attuan.mintlify.site-2a78d6"></a>
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-2a78d6">
   <img alt="scikit-learn compatible" src="https://img.shields.io/badge/scikit--learn-compatible-2a78d6">
   <img alt="LLM: Claude by default, others through LiteLLM" src="https://img.shields.io/badge/LLM-Claude%20%C2%B7%20LiteLLM-e8692f">
+  <a href="#one-key-for-everything-the-vercel-ai-gateway"><img alt="Vercel AI Gateway supported" src="https://img.shields.io/badge/Vercel%20AI%20Gateway-supported-000000"></a>
+  <a href="#a-cheaper-middle-tier--jev"><img alt="Jev (TypeSafe AI) supported" src="https://img.shields.io/badge/Jev%20(TypeSafe%20AI)-supported-e8692f"></a>
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-59636e">
 </p>
 
@@ -83,7 +86,7 @@ signal on your data before you spend anything.
 The project started as an internship project on used-car price prediction; used cars are the
 flagship use case, not the scope.
 
-**Documentation site: the same tutorials plus an API reference, built from the `docs/` folder of this repository with Mintlify.**
+**Documentation: <https://attuan.mintlify.site/>**: the same tutorials plus an API reference, built from the `docs/` folder of this repository with Mintlify.
 
 **New here? Open [`examples/quickstart.ipynb`](https://github.com/attuan/mekiki/blob/main/examples/quickstart.ipynb) first**: used-car prices end
 to end on the bundled data, committed with the outputs of a real run so it can be read right here on
@@ -368,7 +371,7 @@ from mekiki import SemanticEncoder, EvidenceRegressor, KnowledgeEncoder, JevFall
 col = SemanticEncoder(source="description", values=["dealer", "private"],
                       fallback=[JevFallback(), LLMFallback()])   # neighbours -> Jev -> LLM
 model = EvidenceRegressor(target="price", numeric=["age", "odometer"],
-                          jev=True, escalate_rate=0.2, signal="jev")  # models -> Jev weights -> LLM
+                          jev=True, escalate_rate=0.2)  # models -> Jev weights -> LLM
 cols = KnowledgeEncoder(keys=["manufacturer", "model"], attribute="body style",
                         values=["sedan", "SUV", "pickup"], jev=True)  # Jev per key -> LLM for the rest
 ```
@@ -378,6 +381,24 @@ through the Vercel AI Gateway (model `typesafe-ai/jev`). Without either the Jev 
 everything runs as the two-tier version. Provenance records `jev` as a source, and `cost()` /
 `plan()` report the Jev bill separately. The client (`JevClient`) shares the design of
 `LLMClient`: disk cache, cost accounting, parallel batches, and no extra dependency.
+
+Measured through the Vercel AI Gateway, each part with and without Jev on the same rows and the
+same LLM answers:
+
+| part | task | without Jev | with Jev |
+|---|---|---|---|
+| `SemanticEncoder` | model name → body type, used cars, 400 rows | accuracy 0.708, 400 LLM calls | 0.692, **190 LLM calls** |
+| `SemanticEncoder` | tasting note → grape variety, wine reviews, 400 rows | 0.792, 398 LLM calls | 0.760, **133 LLM calls** |
+| `EvidenceRegressor` | used-car price, 600 rows, no LLM call | MAE 3,043 (first model) | **2,883** (Jev-weighted models) |
+| `EvidenceClassifier` | pet adoption speed (5 classes), 600 rows, no LLM call | accuracy 0.397 | **0.417** |
+| `KnowledgeEncoder` | body type for 306 used-car models | 0.766 agreement, all by the LLM | 0.768, **229 of 306 settled by Jev** |
+
+Jev cuts LLM calls by 52–83% for a 0.02–0.04 drop in accuracy, and its confident answers are as
+accurate as the LLM's. It is a tier in front of the LLM, not a replacement: alone it leaves the
+rows it is unsure about unanswered. On a binary task where the models already agree (telecom
+churn) the weighting did not help. Keep the default routing signal; routing by Jev's confidence
+(`signal="jev"`) chose worse rows than model disagreement. Details on the
+[documentation site](https://attuan.mintlify.site/concepts/providers-and-tiers#what-the-middle-tier-buys).
 
 ## `KnowledgeEncoder` — columns the table does not have
 

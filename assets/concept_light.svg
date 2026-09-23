@@ -53,7 +53,7 @@
 <polyline points="210,257 244,257" fill="none" stroke="#59636e" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#a)"/>
 <circle cx="509" cy="26" r="9" fill="#2a78d6"/>
 <text x="509" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
-<text x="525" y="30.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#59636e" text-anchor="start">MODELS SOLVE IT FIRST</text>
+<text x="525" y="30.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#59636e" text-anchor="start">EVIDENCEREGRESSOR · models solve it first · only unsure rows reach the LLM · explain() shows why</text>
 <rect x="500" y="105" width="200" height="160" rx="10" fill="#f6f8fa" stroke="#c8d1da" stroke-width="1.5"/>
 <text x="516" y="134" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1f2328" text-anchor="start">Statistical models</text>
 <rect x="516" y="148" width="168" height="22" rx="5" fill="#ffffff" stroke="#c8d1da"/>
@@ -65,15 +65,12 @@
 <text x="516" y="250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#59636e" text-anchor="start">+ similar records, target known</text>
 <polyline points="460,112 480,112 480,160 494,160" fill="none" stroke="#59636e" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#a)"/>
 <polyline points="460,257 480,257 480,210 494,210" fill="none" stroke="#59636e" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#a)"/>
-<circle cx="749" cy="26" r="9" fill="#2a78d6"/>
-<text x="749" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
-<text x="765" y="30.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#59636e" text-anchor="start">ONLY UNSURE ROWS REACH THE LLM</text>
 <polygon points="790,135 840,185 790,235 740,185" fill="#ddebfb" stroke="#2a78d6" stroke-width="1.8" stroke-linejoin="round"/>
 <text x="790" y="184" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="middle">models</text>
 <text x="790" y="199" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2328" text-anchor="middle">agree?</text>
 <polyline points="700,185 734,185" fill="none" stroke="#59636e" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#a)"/>
 <rect x="880" y="50" width="220" height="96" rx="10" fill="#f6f8fa" stroke="#c8d1da" stroke-width="1.5"/>
-<text x="896" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1f2328" text-anchor="start">Prediction</text>
+<text x="896" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1f2328" text-anchor="start">Prediction · explain()</text>
 <text x="896" y="99" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">with provenance per cell:</text>
 <text x="896" y="120" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start">source · confidence</text>
 <text x="896" y="136" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start">evidence · cost</text>
