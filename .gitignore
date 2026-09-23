@@ -1,0 +1,19 @@
+# APIキー。絶対にコミットしないこと（.env.example が雛形）
+.env
+
+# LLM 応答・埋め込みのキャッシュ。コードで再生成できる
+sampledata/processed/*
+!sampledata/processed/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# パッケージのビルド成果物
+dist/
+build/
+*.egg-info/
+
+.DS_Store

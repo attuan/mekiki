@@ -1,0 +1,72 @@
+---
+title: "Leakage checks"
+description: "When the same record is in both train and test, prediction becomes lookup. mekiki detects it, and masks the other common leak: the answer written in the text."
+---
+
+**When the same record is in both train and test, it is not prediction but reading off the
+answer.** Duplicates are common in real data: in wine reviews the same tasting note is
+attached to several titles, in pet-adoption profiles one shelter reuses the same
+description, and in the Craigslist used-car listings the same car is posted in several
+regions, price included (one VIN appeared up to 261 times). In that last case 42% of the
+filtered rows were duplicates, and random-split cross-validation with them left in inflated
+R² from 0.880 to 0.914.
+
+**The more unstructured text is used as a feature, the larger the inflation.** mekiki is
+precisely a tool for turning text into features, so instead of relying on the user's
+discipline the library detects it.
+
+## Two checks
+
+```python
+from mekiki import check_duplicates, check_overlap
+
+print(check_duplicates(df, keys=["VIN"]))        # duplicates within one table
+print(check_overlap(train, test))                # duplicates across train and test
+```
+
+[`check_duplicates`](/api/inspection/check-duplicates) counts rows with identical contents
+within one table. Pass `keys=` when a single identifier column exists (a serial number, a
+VIN), or `ignore=` for columns whose value differs even for the same item (an id, a region,
+a posting date). [`check_overlap`](/api/inspection/check-overlap) counts the test rows whose
+contents also appear in train, comparing only the columns present in both; this is the
+actual harm.
+
+[`SemanticEncoder`](/api/columns/semantic-encoder) and
+[`EvidencePredictor`](/api/prediction/evidence-predictor) run these automatically on `fit`
+and `predict` and raise a [`MekikiWarning`](/api/errors/mekiki-warning) when something is
+found. It warns rather than raises, because duplicates can be intentional; switch it off
+with `check_leakage=False`.
+
+## Keeping one row per item
+
+[`diagnose()`](/api/inspection/diagnose) works out which columns differ between re-listings
+of the same item and returns them as `rec.dedup_ignore`, so one line keeps one row per item:
+
+```python
+rec = diagnose(df, target="price", unit="USD", llm=False)
+df = df.loc[~df.drop(columns=rec.dedup_ignore).duplicated()].reset_index(drop=True)
+```
+
+## The answer written in the text
+
+Listing text often **contains the asking price verbatim**: 43.7% of the Craigslist
+`description` rows do. Passed as is, the task becomes reading the answer rather than
+predicting it, so for regression mekiki **masks amounts by default** in the `long_text`
+column before the LLM sees it. Money amounts become `<AMOUNT>`, bare numbers in a
+price-like range become `<NUMBER>`, and the prompt tells the LLM that these very likely held
+the asking price and are not to be guessed.
+
+```python
+model = EvidenceRegressor(..., long_text="description")   # amounts become <AMOUNT>
+```
+
+The behaviour is controlled by `mask_amounts_in_long_text` on
+[`ColumnSpec`](/api/prediction/column-spec).
+
+## Before any of this: does the text help?
+
+[`screen()`](/api/inspection/screen) is the check to run first. It trains tree models with
+and without a text column and compares them on the same folds, never calling an LLM. Where
+the text does not explain the target, having an LLM read it does not help either. On the
+bundled news headlines it gives both answers: the headline barely predicts how often an
+article was shared, and predicts the topic well.

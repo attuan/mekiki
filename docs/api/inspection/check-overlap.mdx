@@ -1,0 +1,23 @@
+---
+title: "check_overlap"
+description: "Count the test rows whose contents also appear in train."
+---
+
+
+```python
+from mekiki import check_overlap
+```
+
+```python
+check_overlap(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    keys: Sequence[str] | None = None,
+    ignore: Sequence[str] | None = None,
+) -> OverlapReport
+```
+
+Count the test rows whose contents also appear in train.
+
+Only columns present in **both** train and test are compared
+(test may lack the target column).

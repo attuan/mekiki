@@ -1,0 +1,95 @@
+---
+title: "Introduction"
+description: "mekiki turns unstructured columns into typed features and puts an LLM on top of statistical models rather than in place of them."
+---
+
+`mekiki` (目利き, "a trained eye") is a scikit-learn-compatible Python library that turns
+unstructured columns (free text today; images are in the design) into typed features and puts
+an LLM **on top of** statistical models rather than in place of them.
+
+Structured columns rarely determine a target on their own. In used-car pricing, the listing
+title and the seller's description carry what the mileage and model year do not. Classical
+regression could only absorb that as dummy variables, which is where accuracy plateaued.
+`mekiki` closes that gap with an LLM, but keeps the LLM where it is cheap, auditable and
+easy to switch off.
+
+<img src="/images/concept_light.svg" className="block dark:hidden" alt="How mekiki works: free text becomes typed columns, statistical models solve the task first, and only the rows they are unsure about reach the LLM, which makes the final call from their predictions and similar records" />
+<img src="/images/concept_dark.svg" className="hidden dark:block" alt="How mekiki works: free text becomes typed columns, statistical models solve the task first, and only the rows they are unsure about reach the LLM, which makes the final call from their predictions and similar records" />
+
+## The six parts
+
+<CardGroup cols={3}>
+  <Card title="diagnose()" icon="stethoscope" href="/api/inspection/diagnose">
+    Hand it a DataFrame and a target; get back a recommended configuration as objects you can pass straight in.
+  </Card>
+  <Card title="SemanticEncoder" icon="tag" href="/api/columns/semantic-encoder">
+    Declare an unstructured column as a typed one. Embed, neighbour vote, confidence; the LLM is only a fallback for unsure rows.
+  </Card>
+  <Card title="KnowledgeEncoder" icon="book-open" href="/api/columns/knowledge-encoder">
+    Columns the table lacks, from the LLM's world knowledge. Asked once per key value, kept only if they help.
+  </Card>
+  <Card title="EvidencePredictor" icon="scale-balanced" href="/api/prediction/evidence-predictor">
+    LightGBM, XGBoost and a semantic k-NN solve it first; the LLM makes the final call from their evidence. Regression and classification.
+  </Card>
+  <Card title="Confidence routing" icon="code-branch" href="/concepts/confidence-routing">
+    One ratio, `escalate_rate`, decides which rows reach the LLM at all, from signals that exist before any call.
+  </Card>
+  <Card title="Provenance" icon="fingerprint" href="/concepts/provenance-and-cost">
+    Every cell knows its source (human / model / llm), confidence, evidence and cost. `explain()` traces it back.
+  </Card>
+</CardGroup>
+
+| part | what it gives you | calls the LLM | LLM cost grows with |
+|---|---|---|---|
+| [`diagnose()`](/api/inspection/diagnose) | a recommended configuration, as objects | once per table (optional) | — |
+| [`screen()`](/api/inspection/screen) | whether the text carries signal at all | never | — |
+| [`SemanticEncoder`](/api/columns/semantic-encoder) | a typed column from an unstructured one | only for low-confidence rows | rows escalated |
+| [`KnowledgeEncoder`](/api/columns/knowledge-encoder) | columns the table does not have | once per distinct key value | distinct keys, not rows |
+| [`EvidencePredictor`](/api/prediction/evidence-predictor) | predictions with evidence and a reason | once per routed row | rows × `escalate_rate` |
+| [`check_duplicates`](/api/inspection/check-duplicates) / [`check_overlap`](/api/inspection/check-overlap) | duplicate-record leakage warnings | never | — |
+
+Every cell carries provenance (human / model / llm, confidence, evidence, cost). LLM responses
+are cached on disk so no row is paid for twice. Duplicate-record leakage is checked
+automatically on fit / predict. And `screen()` tells you, for free, whether text carries any
+signal on your data before you spend anything.
+
+Used cars are the flagship use case, not the scope: the same classes run on news headlines
+and on a bank's phone campaign in the tutorials, and the wording that tells the LLM what a
+record is comes from a [`Domain`](/api/prediction/domain) you write.
+
+## A first taste, with no API key
+
+The bundled 500-row excerpts are enough. A typed column in seven lines:
+
+```python
+import pandas as pd
+from mekiki import SemanticEncoder
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("news_sample500.csv"))
+topic = SemanticEncoder(source="Headline", type="category",
+                        values=["economy", "microsoft", "obama", "palestine"])
+df["topic_typed"] = topic.fit_transform(df)       # no labels, no API key, about two seconds
+print((df["topic_typed"] == df["Topic"]).mean())  # 0.92 against the true topic
+print(topic.explain(1))                           # why row 1 got its value
+```
+
+That is a typed column from four words of supervision, with a confidence and a provenance
+record per cell.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Python 3.12 or later, the extras, and where the API key goes.
+  </Card>
+  <Card title="Quickstart" icon="play" href="/tutorials/quickstart">
+    Used-car prices end to end on the bundled data, with the bill shown before anything is spent.
+  </Card>
+  <Card title="Tutorials" icon="graduation-cap" href="/tutorials/semantic_encoder">
+    One page per part, each ending with how to plug in your own pieces.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/columns/semantic-encoder">
+    Every public class and function, generated from the package itself.
+  </Card>
+</CardGroup>

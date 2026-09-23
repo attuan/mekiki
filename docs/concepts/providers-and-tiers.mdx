@@ -1,0 +1,92 @@
+---
+title: "Providers and tiers"
+description: "The three tiers every row passes through, which client answers at each one, and how the LLM provider is chosen."
+---
+
+import Providers from '/snippets/providers.mdx';
+
+mekiki is arranged so that the cheapest answer is tried first and the most expensive one is
+reached last. Every row passes through the same tiers, and each tier only hands on the rows
+it cannot settle:
+
+| tier | who answers | cost per row | latency |
+|---|---|---|---|
+| 0 | **Labels you already have.** Rows with a known answer are never predicted; approved answers join this tier through `approve()` | free | none |
+| 1 | **Statistical models.** LightGBM, XGBoost and a nearest-neighbour index in [`EvidencePredictor`](/api/prediction/evidence-predictor); the embedding classifier in [`SemanticEncoder`](/api/columns/semantic-encoder) | free | milliseconds |
+| 2 | **Jev**, a "System One" model that answers typed questions with calibrated probabilities, through [`JevClient`](/api/clients/jev-client) | about $0.00004 (input tokens only) | a few hundred milliseconds |
+| 3 | **A frontier LLM** through [`LLMClient`](/api/clients/llm-client). It receives the statistical predictions and the similar cases as evidence and makes the final call | about $0.01 | seconds |
+
+Tiers 2 and 3 are optional and independent: without a TypeSafe key the Jev tier is skipped,
+without an LLM key the rows that reach tier 3 are queued for review instead of answered.
+
+## Turning the middle tier on
+
+Jev cannot write free text or numbers. It picks one of a fixed set of options, rates against
+ordered levels, or answers yes/no, and returns a probability for every option plus a
+confidence. That is enough for most of what mekiki asks a model to decide, so each part has
+one switch:
+
+```python
+from mekiki import SemanticEncoder, EvidenceRegressor, KnowledgeEncoder
+from mekiki import JevFallback, LLMFallback
+
+# SemanticEncoder: the fallback becomes a chain. Jev answers the unsure rows first;
+# only the rows it is not confident about (below JevFallback.threshold) go on to the LLM.
+col = SemanticEncoder(source="description", values=["dealer", "private"],
+                      fallback=[JevFallback(), LLMFallback()])
+
+# EvidenceRegressor / EvidenceClassifier: rows that are not routed to the LLM are no longer
+# answered by the first statistical model alone. Jev is asked which model's prediction to
+# trust and the answer is the probability-weighted average. signal="jev" routes the rows
+# Jev is unsure about to the LLM.
+model = EvidenceRegressor(target="price", numeric=["age", "odometer"],
+                          jev=True, escalate_rate=0.2, signal="jev")
+
+# KnowledgeEncoder: category / binary attributes are asked to Jev first, per key value;
+# keys it answers confidently never reach the LLM. Numeric attributes always go to the LLM.
+cols = KnowledgeEncoder(keys=["manufacturer", "model"], attribute="body style",
+                        values=["sedan", "SUV", "pickup"], jev=True)
+```
+
+`diagnose()` has no Jev tier: its judgement is free-form, and it runs once per table.
+
+Provenance records which tier answered (`source` / `origin` is `human`, `model`, `jev` or
+`llm`), and `cost()` / `plan()` report the Jev and LLM bills separately.
+
+## One client per provider
+
+Two classes emit HTTP: `LLMClient` for the frontier model and `JevClient` for Jev.
+Everything above them (the predictor, the fallbacks, `diagnose`, the knowledge columns) only
+knows "send a question, get a structured answer back". For `LLMClient` the `model` string
+picks the route:
+
+```python
+from mekiki import LLMClient, JevClient
+
+LLMClient()                                 # Claude, through the official Anthropic SDK
+LLMClient(model="openai/gpt-5")             # anything else, through LiteLLM
+LLMClient(model="gemini/gemini-2.5-pro")
+LLMClient(model="ollama/llama3")            # a local model
+JevClient()                                 # jev-latest, key from TYPESAFE_API_KEY,
+                                            # or typesafe-ai/jev through the Vercel AI
+                                            # Gateway with AI_GATEWAY_API_KEY
+```
+
+One key can replace all of them. With `AI_GATEWAY_API_KEY` set, every model whose own key is
+missing goes through the [Vercel AI Gateway](https://vercel.com/ai-gateway) instead
+(`via_gateway` tells which way a client goes). Claude keeps the official SDK there, with
+structured output and prompt caching unchanged, and its cache key does not change: answers
+cached from Anthropic directly keep hitting through the gateway. To send Claude through the
+gateway even with an Anthropic key present, pass `base_url="https://ai-gateway.vercel.sh"`
+(or set `ANTHROPIC_BASE_URL`).
+
+Pass the client to whichever part needs it (`client=` on `EvidencePredictor`,
+`KnowledgeEncoder` and `diagnose`; `LLMFallback(client)` for `SemanticEncoder`; `jev=` takes a
+`JevClient` or `True`). `why_unavailable()` on either client says which key or package is
+missing, in a sentence.
+
+Both clients cache every answer on disk, count tokens and dollars on every call, and send
+batches in parallel. The rest of this page is generated from the package's own module
+documentation, so it describes exactly the clients your version contains.
+
+<Providers />

@@ -1,0 +1,93 @@
+---
+title: "Confidence routing"
+description: "Which rows reach the LLM at all: one ratio, escalate_rate, decided from signals that exist before any call."
+---
+
+[`EvidencePredictor`](/api/prediction/evidence-predictor) calls the LLM **once per row**, so
+the row count is the cost and the time: 60,000 rows is roughly $516 and 17 hours at eight
+parallel requests. Confidence routing chooses the rows to send using only signals available
+before any LLM call, and leaves the rest to the statistical models. One ratio moves
+continuously between "call every row" and "never call".
+
+```python
+from mekiki import EvidenceRegressor
+
+model = EvidenceRegressor(target="price", unit="USD",
+                          numeric=["age", "odometer"],
+                          categorical=["manufacturer", "state"], text="model",
+                          escalate_rate=0.3)     # send only the 30% strongest-signal rows
+model.fit(train)
+model.plan(test)      # before calling: how many rows, how much, how long (free)
+pred = model.predict(test)
+model.route()         # per row: fast path or llm, and the signal value
+model.curve(test)     # accuracy / cost / latency as the ratio is swept
+model.approve()       # approve the LLM's answers; those rows are served without a call next time
+```
+
+Leaving `escalate_rate` out sends every row and warns with the estimated cost;
+`escalate_rate=1.0` says so explicitly and silences the warning. If you think in absolute
+terms instead, pass `threshold=` on the signal (for the default signal on a price target,
+"escalate when the tree models are more than $5,000 apart").
+
+## The signal
+
+The default signal is the **disagreement between LightGBM and XGBoost**: the rows where the
+statistical models themselves are unsure. For classification it is the disagreement between
+their class probabilities. Two other signals are built in:
+
+- `signal="similarity"` escalates the rows with no close match among the known cases.
+- `signal="unseen"` prefers rows containing category levels or words that never appeared
+  in training (an unknown `model`, for example).
+
+A signal of your own is a function of the rows and the statistical models' predictions that
+returns one number per row; larger means "send this one".
+
+```python
+def oldest_first(X, evidence):
+    return (2026 - X["year"]).to_numpy()
+
+EvidenceRegressor(escalate_rate=0.3, signal=oldest_first, target="price", unit="USD",
+                  numeric=["year", "odometer"]).fit(train).plan(test)
+```
+
+`evidence` is a dict with each model's predictions (`evidence["LightGBM"]`, and so on). A
+model you add through `models=` does not take part in the `disagreement` signal unless it
+sets `in_disagreement = True`, because the signal is a spread between models and one weak
+model would otherwise decide which rows are sent.
+
+## What routing buys
+
+<img src="/images/routing_curve_light.png" className="block dark:hidden" alt="MAE against the share of rows sent to the LLM, 600 used-car rows: 3,043 at 0% ($0.00), 2,674 at 30% ($1.57), 2,581 at 50% ($2.62), 2,265 at 100% ($5.23)" />
+<img src="/images/routing_curve_dark.png" className="hidden dark:block" alt="MAE against the share of rows sent to the LLM, 600 used-car rows: 3,043 at 0% ($0.00), 2,674 at 30% ($1.57), 2,581 at 50% ($2.62), 2,265 at 100% ($5.23)" />
+
+Measured on 600 held-out Craigslist used-car listings, the error falls steadily as more rows
+are sent. Routing is therefore not a way to gain accuracy but a way to **choose how much
+accuracy to buy**: sending half the rows costs half as much and keeps 59% of the improvement.
+
+| rows sent to the LLM | 0% | 10% | 20% | 30% | 50% | 75% | 100% |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| MAE (USD) | 3,043 | 2,907 | 2,795 | 2,674 | 2,581 | 2,450 | 2,265 |
+| LLM cost (USD) | 0.00 | 0.52 | 1.05 | 1.57 | 2.62 | 3.92 | 5.23 |
+
+Whether a signal works depends on the data: on a second used-car dataset (a single model,
+several hundred rows) no signal separated the rows worth sending. `curve()` is how you find
+out on your own table. It sends every row of a small test set once, then reports what the
+error, the cost and the time would have been at each rate; if the curve is flat, the right
+rate is zero.
+
+## The same idea in `SemanticEncoder`
+
+[`SemanticEncoder`](/api/columns/semantic-encoder) routes on its own confidence: the
+nearest-neighbour vote gives every row a confidence, and `escalate_rate` (or `threshold`)
+sets aside the least confident rows. Without a `fallback` those rows only wait in
+`review_queue()`; with [`LLMFallback`](/api/columns/llm-fallback) they go to the LLM. On 500
+news headlines, 10% of the rows escalated took the column from 92% to 96% correct, for 50
+LLM calls instead of 500.
+
+## The loop that widens the free path
+
+The LLM's answers are not taken on faith. Each one is queued for review together with its
+reason, and `approve()` promotes them to labelled examples. From then on those rows are
+answered from the approved examples without a call, and the LLM budget goes to rows nobody
+has looked at yet. Statistical models answer what they can, the LLM answers what they
+cannot, and every answer you approve widens the free path.

@@ -1,0 +1,193 @@
+---
+title: "SemanticEncoder"
+description: "Unstructured column -> typed column."
+---
+
+
+```python
+from mekiki import SemanticEncoder
+```
+
+```python
+SemanticEncoder(
+    source: str | list[str],
+    type: str = 'category',
+    values: list[str] | None = None,
+    labels: str | None = None,
+    k: int | str = 'auto',
+    threshold: float = 0.9,
+    escalate_rate: float | None = None,
+    on_uncertain: str = 'keep',
+    preprocess: bool = True,
+    vectorizer: Vectorizer | None = None,
+    cache_dir: str | Path | None = None,
+    fallback: Fallback | Sequence[Fallback] | None = None,
+    name: str | None = None,
+)
+```
+
+Unstructured column -> typed column.
+
+<ParamField path="source" type="str | list[str]">
+  Input column(s). Several are joined with spaces
+  (e.g. `source=["title", "description"]`).
+</ParamField>
+
+<ParamField path="type" type="str">
+  "category" / "binary" / "embedding". int, float, ordinal and multilabel are not implemented.
+</ParamField>
+
+<ParamField path="values" type="list[str] | None">
+  Possible values. Required for type="category". When there is not a single label,
+  the names themselves become the reference points ((b) above).
+</ParamField>
+
+<ParamField path="labels" type="str | None">
+  Name of the column holding the ground-truth labels. Can be used instead of `fit(X, y)`.
+</ParamField>
+
+<ParamField path="k" type="int">
+  Number of neighbours to look at.
+</ParamField>
+
+<ParamField path="threshold" type="float">
+  Rows whose confidence falls below this go to 05 (the fallback).
+</ParamField>
+
+<ParamField path="escalate_rate" type="float | None">
+  Specify instead "what share of rows, lowest confidence first, to escalate".
+  Takes precedence over threshold. **More practical when you think in budgets**,
+  since it can be derived from "the share that fits the budget".
+</ParamField>
+
+<ParamField path="on_uncertain" type="str">
+  "keep" keeps the classifier's guess (provenance records needs_review).
+  "null" turns it into a missing value.
+</ParamField>
+
+<ParamField path="preprocess" type="bool">
+  Whether to drop constant tokens (default True; rationale in mekiki/preprocess.py).
+</ParamField>
+
+<ParamField path="vectorizer" type="Vectorizer | None">
+  Swappable. The default is CharTfidfVectorizer, which needs no extra dependencies.
+</ParamField>
+
+<ParamField path="cache_dir" type="str | Path | None">
+  Where the embedding cache lives.
+</ParamField>
+
+<ParamField path="fallback" type="Fallback | Sequence[Fallback] | None">
+  Where 05 escapes to. The default is QueueOnlyFallback, which only queues.
+  A list is a chain of stages tried in order (`[JevFallback(), LLMFallback()]`):
+  each stage answers the rows still open, a row whose answer falls below that
+  stage's `threshold` (or has no value) moves on to the next stage, and whatever
+  is left at the end is queued for review. A stage that cannot be called (no
+  key) is skipped, so the chain degrades to a single fallback, and to the queue.
+</ParamField>
+
+## Methods
+
+### `confidence`
+
+```python
+confidence(X: pd.DataFrame | None = None) -> pd.Series
+```
+
+Per-row confidence. Passing X recomputes it.
+
+### `cost`
+
+```python
+cost(X: pd.DataFrame | None = None) -> dict
+```
+
+Cost estimate. Meant to learn the escalation rate **before** running.
+
+### `examples`
+
+```python
+examples(X: pd.DataFrame | None = None) -> pd.DataFrame
+```
+
+Return the examples each row referenced as a flat table.
+
+### `explain`
+
+```python
+explain(i: int) -> str
+```
+
+Render one row's provenance in human-readable form.
+
+### `fit`
+
+```python
+fit(X: pd.DataFrame, y=None) -> SemanticEncoder
+```
+
+Fit the vectorizer and store the reference points. **Does not call the LLM.**
+
+<ParamField path="X">
+  A table containing the `source` column(s), and the `labels` column if one was declared.
+</ParamField>
+
+<ParamField path="y">
+  Ground-truth labels, one per row of X. Missing entries are allowed; only the labelled
+  rows become reference points. Leave out to use `labels`, or the value names themselves.
+</ParamField>
+
+**Returns**
+
+`self`.
+
+### `fit_transform`
+
+```python
+fit_transform(X: pd.DataFrame, y=None) -> pd.Series | pd.DataFrame
+```
+
+`fit(X, y)` followed by `transform(X)`. Returns what `transform` returns.
+
+### `review_queue`
+
+```python
+review_queue() -> pd.DataFrame
+```
+
+Candidates pending review (over every stage of the chain).
+
+### `status`
+
+```python
+status() -> dict
+```
+
+Summary of where the ground truth came from and how rows were routed.
+
+### `transform`
+
+```python
+transform(X: pd.DataFrame) -> pd.Series | pd.DataFrame
+```
+
+Build the new column for the rows of X. **X itself is not modified.**
+
+Rows whose confidence is too low go to the `fallback`. With an [`Fallback`](/api/columns/fallback) this is
+the step that calls the LLM and costs money; the default fallback only queues them.
+
+<ParamField path="X">
+  A table containing the `source` column(s).
+</ParamField>
+
+**Returns**
+
+Only the new column, carrying the index of X, so it can be assigned straight back
+(`df["name"] = col.transform(df)`).
+
+- type="category" / "binary": a `pd.Series` named after the column (category dtype for
+  "category"). With on_uncertain="null" the uncertain rows are missing.
+- type="embedding": a `pd.DataFrame` with one column per dimension (`<name>_0`, `<name>_1`, ...).
+
+The per-row record (value, confidence, source, cost, references) is kept in `provenance_`
+and replaced on every call.

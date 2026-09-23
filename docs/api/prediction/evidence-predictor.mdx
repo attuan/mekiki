@@ -1,0 +1,364 @@
+---
+title: "EvidencePredictor"
+description: "Predictor that lets the LLM make the final call from statistical models and similar cases."
+---
+
+
+```python
+from mekiki import EvidencePredictor
+```
+
+```python
+EvidencePredictor(
+    target: str,
+    unit: str = '',
+    *,
+    task: str = 'regression',
+    domain: Domain | None = None,
+    numeric: Sequence[str] = (),
+    boolean: Sequence[str] = (),
+    categorical: Sequence[str] = (),
+    text: str | None = None,
+    long_text: str | None = None,
+    spec: ColumnSpec | None = None,
+    models: Sequence[BaseModel | str] | None = None,
+    n_examples: int = 5,
+    neighbour_weight: float = 0.15,
+    vectorizer: Vectorizer | None = None,
+    client: ClaudeClient | None = None,
+    jev: JevClient | bool | None = None,
+    fallback: str = 'best_model',
+    check_leakage: bool = True,
+    escalate_rate: float | None = None,
+    threshold: float | None = None,
+    signal: str | Callable[..., np.ndarray] = 'disagreement',
+)
+```
+
+Predictor that lets the LLM make the final call from statistical models and similar cases.
+
+<ParamField path="target">
+  Name of the target column.
+</ParamField>
+
+<ParamField path="unit">
+  Unit for regression ("USD", "pts"). It only appears in the prompt, but it keeps
+  the LLM from getting the order of magnitude wrong. Unused for classification.
+</ParamField>
+
+<ParamField path="task">
+  "regression" (default) or "classification". For classification the labels are
+  taken from the `target` column of the training data; `predict` returns labels
+  and `predict_proba` returns probabilities (in `classes_` order). Up to
+  `MAX_CLASSES` classes.
+</ParamField>
+
+<ParamField path="domain">
+  The words that tell the LLM what is being predicted ([`Domain`](/api/prediction/domain)). Omitted, the
+  wording does not commit to any field. `USED_CAR` is a ready-made example for
+  used-car prices.
+</ParamField>
+
+<ParamField path="numeric / boolean / categorical / text / long_text">
+  Column assignment. A [`ColumnSpec`](/api/prediction/column-spec) can be passed directly instead. Omitted
+  altogether, `fit` assigns every column except `target` by rules (the same ones
+  [`diagnose`](/api/inspection/diagnose) starts from, no LLM call) and stores the result in `spec_`. Giving any
+  of them turns this off: only the columns given are used.
+</ParamField>
+
+<ParamField path="models">
+  Statistical models that produce the evidence. Default: LightGBM, XGBoost and
+  the neighbour model. A list **replaces** the default; write the string
+  `"default"` inside it to keep the three and add your own:
+  `models=["default", MyModel()]`. Anything with `name`, `fit(train, y)` and
+  `predict(test)` works (`predict_proba` for classification). `models[0]` answers
+  the rows that are not sent to the LLM.
+</ParamField>
+
+<ParamField path="n_examples">
+  Number of similar cases shown to the LLM (the number of few-shot shots).
+</ParamField>
+
+<ParamField path="client">
+  `ClaudeClient`. Default: claude-opus-5 / effort=low.
+</ParamField>
+
+<ParamField path="jev">
+  The middle tier. `True` creates a [`JevClient`](/api/clients/jev-client) (key from the settings file); a
+  [`JevClient`](/api/clients/jev-client) is used as is. Rows that are not sent to the LLM (and not approved)
+  are then put to Jev, which weighs the statistical models' predictions for that
+  row; the prediction is the probability-weighted average, with `origin="jev"`.
+  If Jev cannot answer a row it returns `models[0]` as without Jev. Omitted
+  (None): no middle tier. Without a key the tier is skipped with a warning.
+</ParamField>
+
+<ParamField path="escalate_rate">
+  **What fraction of rows, strongest signal first, to send to the LLM** (0.0-1.0).
+  The rest return the prediction of `models[0]` (LightGBM by default) unchanged
+  (or Jev's weighted average when `jev` is set).
+  It can be derived from a cost ceiling, which makes it the practical choice
+  (same idea as the argument of the same name on [`SemanticEncoder`](/api/columns/semantic-encoder)).
+  Omitted, every row is sent. If the estimated cost then exceeds `COST_WARN_USD`,
+  a [`MekikiWarning`](/api/errors/mekiki-warning) is raised. Write `1.0` when every row is intended; no warning.
+</ParamField>
+
+<ParamField path="threshold">
+  Threshold on the signal value itself. Effective when `escalate_rate` is omitted.
+</ParamField>
+
+<ParamField path="signal">
+  "disagreement" (default, best in measurements) ... spread between the tree
+  models' predictions. A model of your own joins it only if it sets
+  `in_disagreement = True`.
+  "similarity" ... rows whose top neighbour has low similarity (weak evidence).
+  "unseen" ... rows containing category levels or words absent from the training
+  data. Meant for operation where new models and grades keep arriving.
+  "jev" ... 1 minus Jev's confidence in its weighting of the models (needs
+  `jev`). Jev is then asked for every row, including in `plan()`.
+  For a custom signal pass `f(X, evidence) -> array`. **Larger means send to the
+  LLM.**
+</ParamField>
+
+<ParamField path="Usage is scikit-learn&#x27;s `fit` -&gt; `predict`. On top sit the inspection API">
+  
+</ParamField>
+
+<ParamField path="(`explain` / `confidence` / `examples` / `cost` / `provenance`) and the routing">
+  
+</ParamField>
+
+<ParamField path="tools" type="`plan` (estimate before calling), `route` (route per row),">
+  
+</ParamField>
+
+<ParamField path="`review_queue` / `approve` (turn LLM answers into teacher labels), and">
+  
+</ParamField>
+
+<ParamField path="`curve` (accuracy, cost and time as the rate is varied).">
+  
+</ParamField>
+
+## Methods
+
+### `approve`
+
+```python
+approve(rows: Sequence[int] | None = None) -> int
+```
+
+Approve answers. **From then on those rows return without calling the LLM.**
+
+Omitting `rows` approves the whole latest queue.
+Matching is by row content (fingerprint), not row number, so it still works
+when the next predict has a different order or count.
+Returns the number of rows approved.
+
+### `confidence`
+
+```python
+confidence(X: pd.DataFrame | None = None) -> pd.Series
+```
+
+Confidence per row: the LLM's self-report for rows sent to it, the signal
+rescaled to 0-1 for rows not sent, and 1 for approved rows.
+
+Returns the result of the last `predict`. Passing X checks the row count.
+
+### `cost`
+
+```python
+cost(X: pd.DataFrame | None = None) -> dict
+```
+
+Cost incurred, its breakdown, and the comparison with sending every row.
+
+Before any predict, only the client's running totals are returned.
+
+### `curve`
+
+```python
+curve(
+    X: pd.DataFrame,
+    y: pd.Series | np.ndarray | None = None,
+    rates: Sequence[float] = (0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0),
+    verbose: bool = False,
+) -> pd.DataFrame
+```
+
+**Accuracy, cost and latency** in one table as the rate is varied.
+
+**This function sends every row to the LLM.** Drawing the curve needs "what
+would it have answered" for every row; from the second run on the disk cache
+makes it free (the same row is never charged twice). The cost and latency
+columns are the values "if only that fraction had been sent".
+
+The accuracy column is `MAE` for regression and `accuracy` for classification.
+Omitting `y` uses `X[target]`.
+
+<ParamField path="X">
+  Test rows with known answers. Keep it small: every row is billed once.
+</ParamField>
+
+<ParamField path="y">
+  The true values. Leave out to read them from `X[target]`.
+</ParamField>
+
+<ParamField path="rates">
+  The shares of rows to evaluate, each between 0 and 1.
+</ParamField>
+
+**Returns**
+
+A `pd.DataFrame` with one row per rate and the columns:
+
+- `rate`: the share of rows sent, as given in `rates`.
+- `n_escalated`: the number of rows that share amounts to (largest signal first).
+- `MAE` or `accuracy`: the score when those rows take the LLM's answer and the rest
+  keep the statistical answer.
+- `cost_usd`, `estimated_seconds`: estimates for that many rows, from the unit cost
+  per row (not the amount actually billed by this call).
+- with `jev` set, the rows not sent take Jev's weighted average instead of the
+  statistical answer, and `jev_cost_usd` estimates that tier's cost.
+
+The result of the last `predict` is discarded, so call `predict` again before `explain`.
+
+### `evidence`
+
+```python
+evidence(X: pd.DataFrame) -> dict[str, np.ndarray]
+```
+
+Outputs of the statistical models: (n,) numbers for regression,
+(n, C) probabilities for classification.
+
+### `examples`
+
+```python
+examples(i: int | None = None) -> pd.DataFrame
+```
+
+Similar cases used in the inference. With i, only that row's.
+**Only rows sent to the LLM have them.**
+
+### `explain`
+
+```python
+explain(i: int) -> str
+```
+
+Why that row got that value, as prose with the evidence.
+
+When only some rows are sent, it starts with which route the row took.
+
+### `fit`
+
+```python
+fit(X: pd.DataFrame, y: pd.Series | np.ndarray | None = None) -> EvidencePredictor
+```
+
+Memorise the training data. **No separate teacher labels are created here.**
+
+Omitting `y` uses `X[target]`. The answers in the training data become the
+few-shot examples as they are.
+
+If no column was given, every column of `X` except `target` is assigned by the
+same rules [`diagnose`](/api/inspection/diagnose) starts from (dtype, distinct values, mean length; no LLM
+call). Identifier, date and constant columns are left out. The assignment used
+is in `spec_`; pass columns explicitly to override it.
+
+### `plan`
+
+```python
+plan(X: pd.DataFrame) -> dict
+```
+
+**Before calling**: how many rows go to the LLM, how much it costs, how long it takes.
+
+The statistical models run but the LLM is not called, so it is **free**
+(with `signal="jev"` Jev is asked for every row, which is cheap and cached).
+Use it to pick `escalate_rate` to fit a budget.
+
+<ParamField path="X">
+  The rows `predict` would be called on. The target column is not needed.
+</ParamField>
+
+**Returns**
+
+A dict:
+
+- `n_rows`: number of rows in X.
+- `signal`: name of the routing signal ("custom" for a function of your own).
+- `escalation_rule`: the cut in words (a rate or a threshold).
+- `n_escalated`: rows that would go to the LLM.
+- `n_skipped_approved`: rows answered from approved examples, without the LLM.
+- `n_fast_path`: the remaining rows, which keep the statistical answer.
+- `estimated_cost_usd`, `estimated_seconds`: for the `n_escalated` rows.
+- `cost_per_row_usd`: the unit cost behind the estimate.
+- with `jev` set: `n_jev` (the fast-path rows Jev will weigh), `jev_available`,
+  `jev_cost_per_row_usd`, `estimated_jev_cost_usd` and `estimated_jev_seconds`.
+
+### `predict`
+
+```python
+predict(X: pd.DataFrame, verbose: bool = False) -> np.ndarray
+```
+
+Return one prediction per row: numbers for regression, labels for classification.
+
+Which rows go to the LLM is decided by `escalate_rate` / `threshold` (omitted:
+every row). The other rows return the prediction of `models[0]` (LightGBM by
+default) unchanged, exactly as when the routing curve was measured.
+Approved rows (`approve`) return the approved value without calling the LLM.
+
+### `predict_proba`
+
+```python
+predict_proba(X: pd.DataFrame, verbose: bool = False) -> np.ndarray
+```
+
+Probability of each candidate per row (in `classes_` order). Classification only.
+
+Internally the same single inference as `predict`. Rows sent to the LLM carry
+the LLM's probabilities; rows not sent, and rows it could not answer, carry the
+probabilities of `models[0]`.
+
+### `provenance`
+
+```python
+provenance() -> pd.DataFrame
+```
+
+Provenance of every row as a table: `explain` in list form, plus route and signal.
+
+### `report`
+
+```python
+report() -> str
+```
+
+Summary of what one predict did.
+
+### `review_queue`
+
+```python
+review_queue() -> pd.DataFrame
+```
+
+Rows the LLM answered = teacher-label candidates. Approving them widens the
+fast path next time.
+
+### `route`
+
+```python
+route() -> pd.DataFrame
+```
+
+Which route each row took, together with the signal value.
+
+
+## Attributes
+
+<ParamField path="proba_">
+  Probability matrix of the last predict (classification only).
+</ParamField>

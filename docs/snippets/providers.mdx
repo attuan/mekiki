@@ -1,0 +1,89 @@
+## The LLM client (`mekiki.llm`)
+
+Foundation for calling an LLM (shared by [`EvidencePredictor`](/api/prediction/evidence-predictor), [`SemanticEncoder`](/api/columns/semantic-encoder)'s fallback, [`diagnose`](/api/inspection/diagnose) and
+knowledge columns).
+
+**This is the only place that emits HTTP.** The layers above ([`EvidencePredictor`](/api/prediction/evidence-predictor) /
+[`LLMFallback`](/api/columns/llm-fallback) / [`diagnose`](/api/inspection/diagnose) / [`KnowledgeEncoder`](/api/columns/knowledge-encoder)) only know "send JSON, get JSON back".
+
+Two routes sit behind one class, chosen by the `model` string (`provider_of`).
+
+- **Claude** (`claude-...`, or `anthropic/claude-...`) goes through the official
+  `anthropic` SDK: structured output via `output_config.format`, depth via
+  `output_config.effort`, the system prompt on the prompt cache.
+- **Everything else** (`openai/gpt-5`, `gemini/gemini-2.5-pro`, `ollama/...`, ...) goes
+  through LiteLLM (`pip install "mekiki[litellm]"`). LiteLLM finds the provider's key in
+  the environment (`OPENAI_API_KEY`, `GEMINI_API_KEY`, ...), translates the JSON schema
+  into that provider's structured-output feature, and knows the price of each model.
+  Claude is *not* routed through LiteLLM on purpose: LiteLLM implements structured
+  output there with a forced tool call and maps `effort` onto thinking budgets, and both
+  break on current Claude models.
+
+Three design points are non-negotiable, on both routes.
+
+1. **Always go through the disk cache.** 5-fold cross-validation hits the same rows
+   again and again, and every re-run after a code change would re-bill every row.
+   Results are stored in `sampledata/processed/llm_cache/` keyed by the prompt hash,
+   and the second time onwards is returned free of charge.
+   **The user prompt is stored, not only the response.** The key is a sha256 and
+   cannot be reversed, so without the body there is no way to trace afterwards
+   "what question produced this answer". The system prompt is identical for every
+   row, so only its fingerprint (`system_sha`) is kept.
+2. **Always count the cost.** The unit cost per row cannot be reported without
+   measuring it. Tokens and dollars are accumulated on every call.
+3. **Send in parallel.** One request per row means that a serial run takes tens of
+   minutes for 300 rows.
+
+**Both routes can go through the Vercel AI Gateway** instead of each provider,
+with one key (`AI_GATEWAY_API_KEY`) and one bill. The gateway is used when the
+provider's own key is missing and the gateway key is present, or when asked for
+with `base_url` (or `ANTHROPIC_BASE_URL`) pointing at `ai-gateway.vercel.sh`.
+Claude keeps the official SDK and its native fields there (the gateway passes
+`output_config` and `cache_control` through unchanged); other providers go through
+LiteLLM's `vercel_ai_gateway/` provider. **The model name sent on the wire gains the
+gateway's prefix (`anthropic/claude-...`), but the cache key does not**, so answers
+cached from the direct route keep hitting and vice versa.
+
+API keys live in `.env` (or the environment). Importing works without a key;
+`available()` merely returns False (so the tests can run) and `why_unavailable()`
+says which key or package is missing.
+
+## The middle tier (`mekiki.jev`)
+
+Client for Jev, the "System One" model of TypeSafe AI: the middle tier between the
+statistical models and the frontier LLM.
+
+Every LLM-using part of mekiki has three stages: the statistical or embedding model
+answers first, Jev answers what it can, and only what is still unsure reaches the
+frontier LLM (`mekiki.llm.LLMClient`). Jev sits in the middle because it is fast
+(a few hundred milliseconds), cheap (input tokens only, no charge for output) and
+**returns calibrated probabilities** rather than prose: its confidence can be compared
+against a threshold to decide whether the frontier LLM is still needed.
+
+Jev cannot write free text or numbers. It answers *typed questions* about a "state"
+(a string, a JSON object or a list):
+
+- `choice` picks one of a fixed set of options and returns `choice`, `confidence`
+  and `probabilities` (one per option).
+- `score` rates the state against ordered levels and returns `score` (the
+  probability-weighted level index), `confidence`, `probabilities` and `legend`.
+- `noul` is a yes/no question and returns `noul`, the probability of "yes".
+
+Several questions can go in one request and are evaluated together.
+
+**This module and `mekiki/llm.py` are the only places that emit HTTP.** The layers
+above ([`JevFallback`](/api/columns/jev-fallback), [`EvidencePredictor`](/api/prediction/evidence-predictor), [`KnowledgeEncoder`](/api/columns/knowledge-encoder)) only know "send a
+state and questions, get answers back". The same three design points as the LLM
+client apply: every call goes through the disk cache (keyed by model, state and
+questions), every call is counted, and batches are sent in parallel.
+
+The API key is `TYPESAFE_API_KEY` in `.env` or the environment (`TYPESAFE_BASE_URL`
+and `TYPESAFE_DEFAULT_MODEL` are honoured too). Jev is also served by the Vercel AI
+Gateway, which speaks the same request and response format: without a TypeSafe key,
+`AI_GATEWAY_API_KEY` is used instead, and the client then talks to the gateway
+(`https://ai-gateway.vercel.sh/typesafe`, model `typesafe-ai/jev`) and records the
+cost the gateway reports for each call. Importing works without a key;
+`available()` merely returns False and every caller degrades to the two-stage
+behaviour (statistical model, then frontier LLM). The HTTP layer uses only the
+standard library, so no dependency is added, and the transport is injectable
+(`transport=`) so that the callers can be tested without a network.

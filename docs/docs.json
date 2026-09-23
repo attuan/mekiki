@@ -1,0 +1,128 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "mekiki",
+  "description": "A trained eye for the columns your model cannot read: typed features from unstructured columns, with an LLM on top of statistical models.",
+  "colors": {
+    "primary": "#2a78d6",
+    "light": "#4a93ea",
+    "dark": "#1f5fb0"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "/"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "installation",
+              "tutorials/quickstart"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/semantic_encoder",
+              "tutorials/knowledge_encoder",
+              "tutorials/evidence_predictor",
+              "tutorials/diagnose"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/confidence-routing",
+              "concepts/provenance-and-cost",
+              "concepts/leakage-checks",
+              "concepts/providers-and-tiers",
+              "concepts/migrating-names"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "groups": [
+          {
+            "group": "Columns",
+            "pages": [
+              "api/columns/semantic-encoder",
+              "api/columns/knowledge-encoder",
+              "api/columns/vectorizer",
+              "api/columns/char-tfidf-vectorizer",
+              "api/columns/sentence-transformer-vectorizer",
+              "api/columns/precomputed-vectorizer",
+              "api/columns/fallback",
+              "api/columns/queue-only-fallback",
+              "api/columns/llm-fallback",
+              "api/columns/drop-constant-tokens",
+              "api/columns/jev-fallback"
+            ]
+          },
+          {
+            "group": "Prediction",
+            "pages": [
+              "api/prediction/evidence-predictor",
+              "api/prediction/evidence-regressor",
+              "api/prediction/evidence-classifier",
+              "api/prediction/domain",
+              "api/prediction/column-spec",
+              "api/prediction/tree-model",
+              "api/prediction/neighbour-model",
+              "api/prediction/neighbour-index"
+            ]
+          },
+          {
+            "group": "Inspection",
+            "pages": [
+              "api/inspection/diagnose",
+              "api/inspection/diagnosis",
+              "api/inspection/recommendation",
+              "api/inspection/screen",
+              "api/inspection/screening-report",
+              "api/inspection/check-duplicates",
+              "api/inspection/check-overlap",
+              "api/inspection/duplicate-report",
+              "api/inspection/overlap-report"
+            ]
+          },
+          {
+            "group": "Clients",
+            "pages": [
+              "api/clients/llm-client",
+              "api/clients/jev-client"
+            ]
+          },
+          {
+            "group": "Errors",
+            "pages": [
+              "api/errors/mekiki-error",
+              "api/errors/mekiki-warning"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/attuan/mekiki"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/attuan/mekiki"
+    }
+  }
+}

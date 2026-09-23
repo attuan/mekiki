@@ -1,0 +1,290 @@
+---
+title: "SemanticEncoder: a typed column from free text"
+description: "A typed column from free text: declare the values, embed, vote by nearest neighbours, and send only the unsure rows to an LLM."
+---
+
+
+<Info>
+This page is generated from a notebook committed with the outputs of a real run. [Open it on GitHub](https://github.com/attuan/mekiki/blob/main/examples/semantic_encoder.ipynb) or [run it in Colab](https://colab.research.google.com/github/attuan/mekiki/blob/main/examples/semantic_encoder.ipynb).
+</Info>
+
+[`SemanticEncoder`](/api/columns/semantic-encoder) reads a text column and returns a column with a fixed set of values. You declare the values; it embeds each text, assigns the nearest value, and tells you how sure it is. This notebook uses it in two ways on 500 news headlines:
+
+- **The column is the prediction.** The values are the classes of the target, so [`SemanticEncoder`](/api/columns/semantic-encoder) is the classifier.
+- **The column is a new feature.** The values describe something the table does not record, and another model uses the new column to predict the target.
+
+Both end by sending the rows it is least sure about to an LLM, and the last section swaps in your own parts.
+
+The first half is free and offline. The cells that call an LLM need an Anthropic API key and cost about $0.65 in total on a first run ($0.21 + $0.43); responses are cached on disk, so running again is free. The outputs saved here were replayed from that cache, which is why the costs they print are $0. The second use also needs `mekiki[embed]`.
+
+```python
+# On Colab or in a fresh environment, uncomment these and run them once.
+# %pip install -q "mekiki[models,llm,embed] @ git+https://github.com/attuan/mekiki"
+# import getpass, os; os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
+```
+
+## 1. The data
+
+```python
+import pandas as pd
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("news_sample500.csv"))
+df[["Headline", "Topic", "SentimentTitle", "SentimentHeadline"]].head()
+```
+
+|  | Headline | Topic | SentimentTitle | SentimentHeadline |
+|---|---|---|---|---|
+| 0 | The UK will surpass both Germany and Japan in ... | economy | 0.000000 | 0.036309 |
+| 1 | Microsoft's Yusuf Mehdi has published a new bl... | microsoft | 0.038705 | -0.084392 |
+| 2 | On both the Republican and Democratic sides, t... | economy | 0.167996 | 0.026064 |
+| 3 | Sanders Will Travel To Vatican To Speak About ... | economy | 0.158114 | 0.130322 |
+| 4 | Sunway Property managing director Sarena Cheah... | economy | 0.069444 | 0.000000 |
+
+News items collected for four topics (`economy`, `microsoft`, `obama`, `palestine`), bundled with the package. `Headline` is the opening of the article, and the two sentiment scores are the only numeric columns that describe the text. The target throughout is `Topic`.
+
+## 2. The column is the prediction
+
+A [`SemanticEncoder`](/api/columns/semantic-encoder) needs two declarations: the column to read (`source`) and the values it can take (`values`). Without labels, the value names themselves become the reference points, and each text is assigned to the nearest one.
+
+`fit_transform` returns only the new column: a pandas Series on the same index as the table, which itself is left unchanged. That is why it can be compared with `df["Topic"]` below, and assigned as `df[name] = ...` in section 3. (With `type="embedding"` there is no single value per row, and it returns a DataFrame with one column per dimension instead.)
+
+Here the four topics are declared as the values. There are no labels and no training.
+
+```python
+from mekiki import SemanticEncoder
+
+CLASSES = ["economy", "microsoft", "obama", "palestine"]
+
+topic = SemanticEncoder(source="Headline", values=CLASSES, escalate_rate=0.1, name="topic")
+pred = topic.fit_transform(df)
+float((pred == df["Topic"]).mean())
+```
+
+```text
+0.92
+```
+
+92% of the headlines get the right topic from four words of supervision, in about two seconds. It works this well here because the class names appear in the text; section 3 shows what to do when they do not.
+
+`escalate_rate=0.1` sets the 10% least confident rows aside. Is the confidence worth trusting?
+
+```python
+correct = pred == df["Topic"]
+correct.groupby(topic.provenance_["source"]).agg(["mean", "size"])
+```
+
+```text
+                  mean  size
+source                      
+model         0.975556   450
+needs_review  0.420000    50
+```
+
+The 450 rows it answered (`model`) are right 97.6% of the time. The 50 it set aside (`needs_review`) are right 42% of the time. Those 50 are where a second opinion pays, and they wait in a queue:
+
+```python
+topic.review_queue().head(3)
+```
+
+|  | row_id | text | classifier_guess | confidence |
+|---|---|---|---|---|
+| 0 | 14 | Economy-wide spending slowed in January after ... | economy | 0.633444 |
+| 1 | 20 | A display of MRSA bacteria strain inside a pet... | microsoft | 0.612430 |
+| 2 | 24 | The unemployment figure announced last week at... | economy | 0.514867 |
+
+The second row is about MRSA bacteria, and the nearest of the four words happened to be "microsoft". That is the kind of row that should not be decided silently.
+
+### With labels, it is a scikit-learn style classifier
+
+If some rows are already labelled, they become the reference points instead of the class names: `fit` on the labelled rows, `transform` the rest.
+
+```python
+from sklearn.model_selection import train_test_split
+
+train, test = train_test_split(df, test_size=100, random_state=0, stratify=df["Topic"])
+
+clf = SemanticEncoder(source="Headline", values=CLASSES, labels="Topic").fit(train)
+float((clf.transform(test).to_numpy() == test["Topic"].to_numpy()).mean())
+```
+
+```text
+0.94
+```
+
+### Send the unsure rows to an LLM
+
+Same declaration, plus a `fallback`. The 50 least confident rows now go to the LLM, together with the candidate values and the nearest reference points. This is the first cell that costs money (about $0.21).
+
+```python
+from mekiki.fallback import LLMFallback
+
+topic = SemanticEncoder(source="Headline", values=CLASSES, escalate_rate=0.1,
+                    fallback=LLMFallback(), name="topic")
+pred = topic.fit_transform(df)
+
+correct = pred == df["Topic"]
+correct.groupby(topic.provenance_["source"]).agg(["mean", "size"])
+```
+
+```text
+            mean  size
+source                
+llm     0.840000    50
+model   0.975556   450
+```
+
+The 50 escalated rows went from 42% to 84% correct, and the column as a whole from 92% to 96%, for 50 LLM calls instead of 500. Every cell keeps its record: what it was compared with, who decided, and what it cost.
+
+```python
+print(topic.explain(27))
+```
+
+```text
+prediction        economy
+confidence        0.750
+source            llm
+strategy          embedding_classifier (bottom 10%)
+vectorizer           char_tfidf_svd256
+input text        America is emerging as a top tax haven alongside the likes t
+references:
+  #2      obama        sim 0.077  labelname  obama
+  #3      palestine    sim 0.041  labelname  palestine
+LLM calls         1
+cost              $0.0000
+```
+
+The classifier's nearest references were `obama` and `palestine`, both with almost no similarity. The LLM read the headline about tax havens and answered `economy`. Its answers are also queued for review with a reason, in `topic.review_queue()`.
+
+## 3. The column is a new feature
+
+Now the other use. The table does not say which **region** a story is about, or what **kind of story** it is (breaking news, opinion, an announcement). Neither is the target, and neither can be computed from the existing columns. We build both from `Headline` and let a tree model use them to predict `Topic`.
+
+One thing changes. A headline about Ramallah does not contain the words "middle east", and the default vectorizer compares spelling (character n-grams), not meaning. When the value names do not appear in the text, swap the vectorizer for a sentence-embedding model. This needs `pip install "mekiki[embed]"`.
+
+```python
+from mekiki.vectorizers import SentenceTransformerVectorizer
+
+vectorizer = SentenceTransformerVectorizer()
+NEW_COLUMNS = {
+    "region": ["united states", "europe", "china", "middle east", "other"],
+    "story_type": ["breaking news", "opinion", "analysis", "announcement", "interview"],
+}
+for name, values in NEW_COLUMNS.items():
+    column = SemanticEncoder(source="Headline", values=values, vectorizer=vectorizer,
+                         escalate_rate=0.1, fallback=LLMFallback(), name=name)
+    df[name] = column.fit_transform(df)
+
+df[["Headline", "region", "story_type"]].head()
+```
+
+|  | Headline | region | story_type |
+|---|---|---|---|
+| 0 | The UK will surpass both Germany and Japan in ... | europe | analysis |
+| 1 | Microsoft's Yusuf Mehdi has published a new bl... | united states | opinion |
+| 2 | On both the Republican and Democratic sides, t... | united states | opinion |
+| 3 | Sanders Will Travel To Vatican To Speak About ... | europe | interview |
+| 4 | Sunway Property managing director Sarena Cheah... | other | interview |
+
+Two columns that did not exist, built the same way as before: the embedding classifier answers 90% of the rows, the LLM the rest (about $0.43 for both columns). Does a model that cannot read text predict `Topic` better with them?
+
+```python
+from lightgbm import LGBMClassifier
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+
+def accuracy(columns):
+    model = LGBMClassifier(n_estimators=100, min_child_samples=5, verbose=-1, random_state=0)
+    folds = StratifiedKFold(5, shuffle=True, random_state=0)
+    return cross_val_score(model, df[columns], df["Topic"], cv=folds).mean()
+
+numeric = ["SentimentTitle", "SentimentHeadline"]
+pd.Series({
+    "numeric columns only": accuracy(numeric),
+    "+ region, story_type": accuracy(numeric + ["region", "story_type"]),
+}).round(3)
+```
+
+```text
+numeric columns only    0.304
++ region, story_type    0.504
+dtype: float64
+```
+
+From 0.30 (worse than always answering the most common topic, 0.37) to 0.50 with two new columns. The embedding classifier does most of this by itself: without the LLM on the bottom 10%, the same comparison gives 0.49.
+
+This is still far below section 2, and that is the point of showing both. When the text states the target directly, let [`SemanticEncoder`](/api/columns/semantic-encoder) predict it. When the text holds side information, turn it into columns and hand them to the model that predicts.
+
+## 4. Bring your own parts
+
+[`SemanticEncoder`](/api/columns/semantic-encoder) has two sockets. Anything with the right methods plugs in; there is nothing to subclass.
+
+### Your own vectorizer
+
+An vectorizer has a `name`, `fit(texts)` and `transform(texts)` returning one vector per text. This one wraps a scikit-learn vectorizer; an in-house embedding model or an image model fits the same shape.
+
+```python
+from sklearn.feature_extraction.text import HashingVectorizer
+
+class WordHashEncoder:
+    name = "word_hashing_512"
+
+    def fit(self, texts):
+        self.vectorizer = HashingVectorizer(n_features=512, norm="l2")
+        return self
+
+    def transform(self, texts):
+        return self.vectorizer.transform(texts).toarray()
+
+mine = SemanticEncoder(source="Headline", values=CLASSES, vectorizer=WordHashEncoder())
+float((mine.fit_transform(df) == df["Topic"]).mean())
+```
+
+```text
+0.888
+```
+
+### Your own fallback
+
+A fallback decides what happens to the rows the classifier is unsure about. It has `can_answer()` and `answer(texts, values, context)`, which returns one `Answer` per text. This one applies a house rule instead of calling an LLM; a call to your own model goes in the same place.
+
+```python
+from mekiki.fallback import Answer
+
+class HouseRules:
+    cost_per_call = 0.0
+
+    def can_answer(self):
+        return True
+
+    def answer(self, texts, values, context):
+        return [Answer(value="economy", confidence=0.6, origin="rule") if "tax" in text.lower()
+                else Answer(value=None, confidence=0.0, origin="rule")
+                for text in texts]
+
+ruled = SemanticEncoder(source="Headline", values=CLASSES, escalate_rate=0.1, fallback=HouseRules())
+ruled.fit_transform(df)
+ruled.provenance_["source"].value_counts()
+```
+
+```text
+source
+model           450
+needs_review     48
+rule              2
+Name: count, dtype: int64
+```
+
+`value=None` keeps the classifier's guess, and `origin` is what shows up as the source in the provenance, so every cell still says who decided it.
+
+## Using it on your own table
+
+- **Source and values.** Put the free-text column in `source` and the values it can take in `values`.
+- **Which of the two uses.** If the text states the target directly, make the values the target's classes and use the column as the prediction. If it only holds indirect evidence, make the values an attribute the table lacks and use the column as a feature.
+- **The vectorizer.** The default is fine when the value names appear in the text. When they do not, switch to sentence embeddings ([`SentenceTransformerVectorizer`](/api/columns/sentence-transformer-vectorizer)).
+- **Labels.** If some rows already have the right answer, pass `labels=`. Those rows become the reference points.
+- **Share of rows sent to the LLM.** Set by `escalate_rate` and `fallback`. Without a `fallback` no LLM is called, and the doubtful rows just wait in the review queue.
+
+## Where to go next
+
+- [`quickstart.ipynb`](/tutorials/quickstart) uses a [`SemanticEncoder`](/api/columns/semantic-encoder) next to the other parts of the library, on used-car listings.
+- **Is a text column worth any of this?** `screen(df, target=..., text=...)` answers that for free, before you spend anything. See the [README](https://github.com/attuan/mekiki#readme).

@@ -1,0 +1,43 @@
+---
+title: "DuplicateReport"
+description: "Duplicates within one table. Printing it gives a readable summary."
+---
+
+
+```python
+from mekiki import DuplicateReport
+```
+
+```python
+DuplicateReport(
+    n_rows: int,
+    n_duplicate_rows: int,
+    n_groups: int,
+    largest_group: int,
+    columns: list[str] = <factory>,
+)
+```
+
+Duplicates within one table. Printing it gives a readable summary.
+
+## Fields
+
+<ParamField path="n_rows" type="int">
+  required
+</ParamField>
+
+<ParamField path="n_duplicate_rows" type="int">
+  required
+</ParamField>
+
+<ParamField path="n_groups" type="int">
+  required
+</ParamField>
+
+<ParamField path="largest_group" type="int">
+  required
+</ParamField>
+
+<ParamField path="columns" type="list[str]">
+  default: empty
+</ParamField>

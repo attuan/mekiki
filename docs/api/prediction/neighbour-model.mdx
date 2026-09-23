@@ -1,0 +1,55 @@
+---
+title: "NeighbourModel"
+description: "Predicts the median answer of the k neighbours (class rates for classification). Handed to the LLM as one piece of evidence."
+---
+
+
+```python
+from mekiki import NeighbourModel
+```
+
+```python
+NeighbourModel(name: str, index: NeighbourIndex, task: str = 'regression')
+```
+
+Predicts the median answer of the k neighbours (class rates for classification).
+Handed to the LLM as one piece of evidence.
+
+On its own it does not reach the statistical models (18.19 vs 12.21 on a used-car
+dataset),
+but it carries information from another direction: "how similar cases turned out".
+
+## Fields
+
+<ParamField path="name" type="str">
+  required
+</ParamField>
+
+<ParamField path="index" type="mekiki.predictor.NeighbourIndex">
+  required
+</ParamField>
+
+<ParamField path="task" type="str">
+  default `'regression'`
+</ParamField>
+
+
+## Methods
+
+### `fit`
+
+```python
+fit(train: pd.DataFrame, y: np.ndarray) -> NeighbourModel
+```
+
+### `predict`
+
+```python
+predict(test: pd.DataFrame) -> np.ndarray
+```
+
+### `predict_proba`
+
+```python
+predict_proba(test: pd.DataFrame) -> np.ndarray
+```

@@ -1,0 +1,82 @@
+---
+title: "Provenance and cost"
+description: "Every cell knows where it came from and what it cost; every bill can be read before it is paid."
+---
+
+Every feature and every prediction in mekiki answers two questions: *why this value?* and
+*what did it cost?* Both are recorded per cell, and the second can be read before anything
+is spent.
+
+## Why this value
+
+Each cell carries a provenance record: its **source** (`human` for a label you supplied,
+`model` for the statistical answer, `llm` for the LLM's), its **confidence**, the
+**evidence** it was decided from, and its **cost**. The same set of methods reads it back on
+[`SemanticEncoder`](/api/columns/semantic-encoder),
+[`KnowledgeEncoder`](/api/columns/knowledge-encoder) and
+[`EvidencePredictor`](/api/prediction/evidence-predictor):
+
+```python
+model.explain(0)      # one row: evidence, retrieved examples, the LLM's reason
+model.confidence()    # per-row confidence
+model.examples()      # the similar records used
+model.cost()          # what was spent and the cost per row
+model.provenance()    # all rows in one table
+model.report()        # a short text summary of a predict() run
+```
+
+For `EvidencePredictor`, `explain(i)` is the whole record: each statistical model's
+prediction, the similar cases with their known targets, the signal that routed the row, and
+the LLM's answer with its self-reported confidence and its reason. Because every row keeps
+each model's own prediction, the result can always be compared with LightGBM alone on the
+same rows.
+
+For `KnowledgeEncoder`, `source` takes one of four values, and everything except `llm`
+becomes a missing value rather than an invented one:
+
+| source | meaning |
+|---|---|
+| `llm` | the LLM answered and the answer passed validation |
+| `unknown` | the LLM answered that it does not know |
+| `rejected` | an answer came back but was outside the declared `values` or `range`, below the confidence threshold, or keyed to the wrong thing |
+| `skipped` | not asked: the key was missing, or seen fewer than `min_count` times |
+
+`review_queue()` lists the rows a person should look at (unknown or rejected answers, most
+frequent key first; for `SemanticEncoder`, the escalated rows with the LLM's answer and
+reason), and `status()` has the counts.
+
+## What it cost, before paying
+
+Nothing in mekiki calls the LLM during `fit`. The paid step is always a separate call, and
+there is always a free estimate in between:
+
+| part | free step | what it tells you |
+|---|---|---|
+| `EvidencePredictor` | `plan(test)` | how many rows would go to the LLM, the estimated cost and time |
+| `EvidencePredictor` | `curve(test)` | error, cost and time at every `escalate_rate` (this one does pay, once, for a small test set) |
+| `SemanticEncoder` | `cost(X)` | the share of rows that would be escalated, and what that costs |
+| `KnowledgeEncoder` | `cost()` after `fit` | how many distinct key values there are and what asking about them costs |
+| `diagnose()` | the report | the estimated cost of sending every row to the LLM |
+| `screen()` | the report | whether the text carries any signal, so that none of the above is worth running |
+
+`KnowledgeEncoder` costs scale with the number of distinct key values, not rows: the 296
+distinct models in a 416-row used-car excerpt cost about $0.55, and the same 296 questions
+would cover 416,000 rows of the same models. On 60,000 Craigslist listings a "typical new
+price" column cost about $4 and cut LightGBM's error by 13.7% without using the `model`
+string at all.
+
+## Nothing is paid for twice
+
+Every LLM response is cached on disk, keyed by a hash of the prompt. Inside a clone of the
+repository the cache lives in `sampledata/processed/llm_cache/`; when installed, in the
+operating system's cache directory; `MEKIKI_CACHE_DIR` overrides both. Re-running a
+notebook after a code change is free, which is why the tutorials print a cost of $0 for
+runs that were replayed from the cache.
+
+The user prompt is stored alongside the response, not only its hash, so "what question
+produced this answer" can be traced afterwards. Changing the wording of a
+[`Domain`](/api/prediction/domain), the system prompt or the answer schema changes the cache
+key, so previously cached answers are no longer reused.
+
+Tokens and dollars are accumulated on every call, which is what `cost()` reports and what
+the estimates above are calibrated from.

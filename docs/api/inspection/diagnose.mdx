@@ -1,0 +1,63 @@
+---
+title: "diagnose"
+description: "diagnose. Build an initial mekiki configuration from data and a target."
+---
+
+
+```python
+from mekiki import diagnose
+```
+
+```python
+diagnose(
+    df: pd.DataFrame,
+    target: str,
+    *,
+    task: str | None = None,
+    unit: str = '',
+    target_name: str | None = None,
+    llm: bool | str = 'auto',
+    client: ClaudeClient | None = None,
+    sample: int | None = 20000,
+    n_splits: int = 5,
+    screen_text: bool = True,
+) -> Recommendation
+```
+
+`diagnose`. Build an initial mekiki configuration from data and a target.
+
+<ParamField path="df, target">
+  The data and the name of the target column. Every other column is diagnosed
+</ParamField>
+
+<ParamField path="task">
+  "regression" / "classification". If omitted, inferred from the target values
+  (strings / booleans -> classification, integers with at most 10 distinct values ->
+  classification, otherwise regression)
+</ParamField>
+
+<ParamField path="unit, target_name">
+  Pass them if known. Used in the report text and in the input to the LLM
+</ParamField>
+
+<ParamField path="llm">
+  "auto" (default) lets the LLM read the column meanings only when an API key exists.
+  True makes it required (error if missing); False runs stage 1 only
+</ParamField>
+
+<ParamField path="client">
+  A `ClaudeClient`. Defaults to the standard one (with cache)
+</ParamField>
+
+<ParamField path="sample, n_splits">
+  Passed to `screen()`. Subsampling and fold count so large data does not take long
+</ParamField>
+
+<ParamField path="screen_text">
+  False skips measuring the explanatory power of text (saves tens of seconds to minutes)
+</ParamField>
+
+**Returns**
+
+A [`Recommendation`](/api/inspection/recommendation). Printing it gives the diagnosis and the recommendation as text.
+`.spec` and `.domain` can be passed straight to [`EvidencePredictor`](/api/prediction/evidence-predictor).

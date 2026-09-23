@@ -1,0 +1,23 @@
+---
+title: "drop_constant_tokens"
+description: "Return the texts with constant tokens dropped, plus the list of dropped tokens."
+---
+
+
+```python
+from mekiki import drop_constant_tokens
+```
+
+```python
+drop_constant_tokens(
+    texts: pd.Series,
+    stop: list[str] | None = None,
+    threshold: float = 0.9,
+) -> tuple[pd.Series, list[str]]
+```
+
+Return the texts with constant tokens dropped, plus the list of dropped tokens.
+
+Passing stop uses that list (**so the tokens decided at fit time are reused at inference**.
+Recounting on inference data with few rows drops different tokens and shifts the
+representation).

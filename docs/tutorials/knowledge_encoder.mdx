@@ -1,0 +1,278 @@
+---
+title: "KnowledgeEncoder: columns from what the LLM knows"
+description: "Columns the table lacks, from the LLM's world knowledge, asked once per distinct key value and kept only if they help."
+---
+
+
+<Info>
+This page is generated from a notebook committed with the outputs of a real run. [Open it on GitHub](https://github.com/attuan/mekiki/blob/main/examples/knowledge_encoder.ipynb) or [run it in Colab](https://colab.research.google.com/github/attuan/mekiki/blob/main/examples/knowledge_encoder.ipynb).
+</Info>
+
+Some information is not in your table at all. A listing says "gmc sierra 1500", and nothing in any column says that this truck cost about $48,000 when it was new. An LLM knows that. [`KnowledgeEncoder`](/api/columns/knowledge-encoder) asks it, once per distinct key value rather than once per row, and returns the answers as new columns.
+
+This notebook uses it in two ways on used-car listings:
+
+- **You say what to look up.** The key columns, the attribute and the type are yours.
+- **You say nothing.** The LLM reads the column list, proposes what to look up, and only the columns that improve the prediction come back.
+
+Then it looks at what stops the LLM from making things up, and at using it in a field other than cars.
+
+You need an Anthropic API key. A first run costs about $1.90 in total ($0.53 + $1.19 + $0.13); answers are cached on disk, so running again is free. The outputs saved here were replayed from that cache, which is why the actual costs they print are $0.
+
+```python
+# On Colab or in a fresh environment, uncomment these and run them once.
+# %pip install -q "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+# import getpass, os; os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
+```
+
+## 1. The data
+
+```python
+import pandas as pd
+from mekiki import diagnose
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("vehicles_sample500.csv"))
+df = df[df["price"].between(1_000, 100_000)]
+df = df.dropna(subset=["year", "odometer", "manufacturer", "description"]).reset_index(drop=True)
+
+rec = diagnose(df, target="price", unit="USD", llm=False)      # finds cars that were listed twice
+df = df.loc[~df.drop(columns=rec.dedup_ignore).duplicated()].reset_index(drop=True)
+df[["year", "manufacturer", "model", "odometer", "price"]].head()
+```
+
+|  | year | manufacturer | model | odometer | price |
+|---|---|---|---|---|---|
+| 0 | 2014.0 | gmc | sierra 1500 crew cab slt | 57923.0 | 33590 |
+| 1 | 2010.0 | chevrolet | silverado 1500 | 71229.0 | 22590 |
+| 2 | 2020.0 | chevrolet | silverado 1500 crew | 19160.0 | 39590 |
+| 3 | 2017.0 | toyota | tundra double cab sr | 41124.0 | 30990 |
+| 4 | 2013.0 | ford | f-150 xlt | 128000.0 | 15000 |
+
+The same 416 Craigslist listings as in [`quickstart.ipynb`](/tutorials/quickstart), one row per car. The target is `price`.
+
+## 2. You say what to look up
+
+Three things define a knowledge column: the **keys** (which columns identify the thing to ask about), the **attribute** (what to find out, in plain words) and the **type** of the answer. `fit` only counts the distinct key values, so the bill is known before anything is spent.
+
+```python
+from mekiki import USED_CAR, KnowledgeEncoder
+
+new_price = KnowledgeEncoder(
+    keys=["manufacturer", "model"],
+    attribute="approximate price of this model when new",
+    type="numeric", unit="USD", range=(3_000, 500_000),
+    domain=USED_CAR, name="new_price",
+)
+new_price.fit(df)
+pd.DataFrame(new_price.cost()["per_column"])
+```
+
+|  | column | n_rows | n_key_values | skipped_below_min_count | known | n_to_ask | estimated_total |
+|---|---|---|---|---|---|---|---|
+| 0 | new_price | 412 | 296 | 0 | 0 | 296 | 0.54908 |
+
+296 distinct models to ask about, about $0.55. The same 296 questions would cover 416,000 rows of the same models: the cost follows the number of distinct key values, not the number of rows. `fit_transform` asks, and returns a DataFrame to join.
+
+```python
+df = df.join(new_price.fit_transform(df))
+df[["year", "manufacturer", "model", "price", "new_price"]].head()
+```
+
+|  | year | manufacturer | model | price | new_price |
+|---|---|---|---|---|---|
+| 0 | 2014.0 | gmc | sierra 1500 crew cab slt | 33590 | 48000.0 |
+| 1 | 2010.0 | chevrolet | silverado 1500 | 22590 | 38000.0 |
+| 2 | 2020.0 | chevrolet | silverado 1500 crew | 39590 | 44000.0 |
+| 3 | 2017.0 | toyota | tundra double cab sr | 30990 | 35000.0 |
+| 4 | 2013.0 | ford | f-150 xlt | 15000 | 38000.0 |
+
+Does the new column help a model predict the price? Mean absolute error of LightGBM in USD, 5-fold:
+
+```python
+from lightgbm import LGBMRegressor
+from sklearn.model_selection import KFold, cross_val_score
+
+def mae(columns):
+    X = df[columns].copy()
+    for c in X.select_dtypes(exclude="number"):
+        X[c] = X[c].astype("category")
+    model = LGBMRegressor(n_estimators=200, min_child_samples=5, verbose=-1, random_state=0)
+    folds = KFold(5, shuffle=True, random_state=0)
+    return -cross_val_score(model, X, df["price"], cv=folds, scoring="neg_mean_absolute_error").mean()
+
+existing = ["year", "odometer", "manufacturer", "fuel", "transmission", "drive", "type"]
+pd.Series({"existing columns": mae(existing), "+ new_price": mae(existing + ["new_price"])}).round(0)
+```
+
+```text
+existing columns    5696.0
++ new_price         4305.0
+dtype: float64
+```
+
+One column from outside the table takes the error from $5,696 to $4,305 (-24%). The tree model never sees the 296 model names as text; it sees what they cost.
+
+## 3. What stops it from making things up
+
+Four guards are built in, and every one of them leaves a trace you can read.
+
+- **"I don't know" is an answer.** The LLM may decline, and the row stays missing rather than getting an invented number.
+- **The answer must fit the declaration.** A number outside `range`, or a category outside `values`, is rejected.
+- **Low confidence is rejected.** The threshold is applied at `transform`, so changing `threshold` never asks again.
+- **Every answer carries its reason.**
+
+```python
+status = new_price.status()["per_column"][0]
+pd.Series({k: status[k] for k in ["n_key_values", "accepted_llm", "unknown", "rejected", "n_rows_filled"]})
+```
+
+```text
+n_key_values     296
+accepted_llm     290
+unknown            6
+rejected           0
+n_rows_filled    405
+dtype: int64
+```
+
+```python
+new_price.review_queue()[["key", "source", "confidence", "reason", "count"]].head(4)
+```
+
+|  | key | source | confidence | reason | count |
+|---|---|---|---|---|---|
+| 0 | mercedes-benz \| benz | unknown | 0.1 | No specific model indicated. | 2 |
+| 1 | dodge \| charger limousine | unknown | 0.1 | Custom stretch limousine conversions have no s... | 1 |
+| 2 | mercedes-benz \| 1929 ssk replica | unknown | 0.1 | Kit-car replica with no standard new price. | 1 |
+| 3 | chevrolet \| bel air | unknown | 0.2 | 1950s Bel Air sold for about $2,500 new, outsi... | 1 |
+
+A model name that identifies nothing, a stretch limousine conversion, a kit-car replica, and a 1950s Bel Air whose price when new falls outside the declared range. These are the rows a person should look at, listed with the most frequent key first. For any single row, `explain` gives the full record:
+
+```python
+print(new_price.explain(0))
+```
+
+```text
+column            new_price
+value             48000.0
+confidence        0.600
+source            llm
+strategy          knowledge_lookup (manufacturer, model -> approximate price of this model when new)
+key               gmc | sierra 1500 crew cab slt
+reason            Crew cab SLT 4x4 typically mid-to-high $40Ks.
+cost              $0.00000
+```
+
+## 4. You say nothing
+
+Leave out the keys, the attribute and the type, and pass only the target. `fit` shows the LLM the column list (names, kinds, a few example values, never the whole table) and asks what outside knowledge would help predict `price`. This costs about $0.03.
+
+```python
+auto = KnowledgeEncoder(target="price", domain=USED_CAR, max_columns=3)
+auto.fit(df.drop(columns="new_price"))
+pd.DataFrame(auto.columns())[["column", "key", "attribute", "type", "reason"]]
+```
+
+|  | column | key | attribute | type | reason |
+|---|---|---|---|---|---|
+| 0 | msrp_new_usd | [model, manufacturer] | typical original MSRP of the model when new | numeric | Original MSRP anchors the depreciated resale p... |
+| 1 | brand_tier | [manufacturer] | market positioning tier of the brand | category | Luxury brands retain higher absolute prices. |
+| 2 | body_class | [model] | vehicle segment/body class of the model | category | Segment strongly affects resale price levels. |
+
+Nobody told it about prices when new; it proposed that by itself, along with a brand tier and a body class. The estimate comes before the spending here too:
+
+```python
+pd.DataFrame(auto.cost()["per_column"])[["column", "n_key_values", "n_to_ask", "estimated_total"]]
+```
+
+|  | column | n_key_values | n_to_ask | estimated_total |
+|---|---|---|---|---|
+| 0 | msrp_new_usd | 296 | 0 | 0.0 |
+| 1 | brand_tier | 33 | 0 | 0.0 |
+| 2 | body_class | 296 | 0 | 0.0 |
+
+```python
+found = auto.fit_transform(df.drop(columns="new_price"))
+found.head()
+```
+
+|  | msrp_new_usd | brand_tier | body_class |
+|---|---|---|---|
+| 0 | 48000.0 | premium | pickup |
+| 1 | 40000.0 | mainstream | pickup |
+| 2 | 42000.0 | mainstream | pickup |
+| 3 | 36000.0 | mainstream | pickup |
+| 4 | 45000.0 | mainstream | pickup |
+
+Because `target` was given, each new column was then scored: a tree model with the column against one without it, on the same folds, with no LLM involved. Only columns that helped are returned.
+
+```python
+auto.scores_
+```
+
+```text
+             metric    without       with  contribution fold_wins  accepted  \
+column                                                                        
+msrp_new_usd    MAE  5408.0863  4153.0293        0.2321       3/3      True   
+brand_tier      MAE  5408.0863  5289.7294        0.0219       3/3      True   
+body_class      MAE  5408.0863  5272.1092        0.0251       3/3      True   
+
+              n_rows  
+column                
+msrp_new_usd     416  
+brand_tier       416  
+body_class       416  
+```
+
+All three passed. `msrp_new_usd` does nearly all of the work (+23%), and the two brand and body columns add about 2% each. Filling the three columns cost $1.16. A sensible routine: let it propose, look at `scores_`, then write the winner out by hand as in section 2, where you control the keys, the range and the wording.
+
+## 5. A field other than cars
+
+Nothing in [`KnowledgeEncoder`](/api/columns/knowledge-encoder) is about cars. `USED_CAR` is a [`Domain`](/api/prediction/domain), which only tells the LLM who it is and what one record is. For another field, write your own. Here the table is news items, the key is the outlet that published each one, and the new column is the country the outlet is based in.
+
+```python
+from mekiki import Domain
+
+news = pd.read_csv(sample_data("news_sample500.csv"))
+
+outlet_country = KnowledgeEncoder(
+    keys="Source",
+    attribute="country where this news outlet is based",
+    type="category",
+    values=["united states", "united kingdom", "india", "australia", "canada", "other"],
+    domain=Domain(role="a media analyst", subject="news outlet"),
+    min_count=2, name="outlet_country",
+)
+news = news.join(outlet_country.fit_transform(news))
+news["outlet_country"].value_counts(dropna=False)
+```
+
+```text
+outlet_country
+NaN               291
+united states     134
+united kingdom     28
+other              24
+india              15
+canada              6
+australia           2
+Name: count, dtype: int64
+```
+
+`min_count=2` skips the 262 outlets that appear only once, which is where most of the 291 missing values come from: on a long tail of rare keys, the money is better spent elsewhere. 81 outlets were asked about, for $0.13.
+
+To use another LLM, pass `client=LLMClient(model="openai/gpt-5")` with that provider's key.
+
+## Using it on your own table
+
+- **Keys.** Choose columns that identify something the LLM is likely to know about (a product, a company, a place). Values that only mean something inside your table, such as a customer id, do not work as keys.
+- **Attribute and type.** Write what you want to know in plain words, and declare `range` or `values` along with `type`. That declaration is what answers are rejected against.
+- **The field.** Write a `Domain(role=..., subject=...)`.
+- **Cost.** Look at `cost()` after `fit`, then call `fit_transform`. If there are many rare keys, cut them with `min_count`.
+- **When you do not know what to add.** Pass only `target`, let it propose, and rewrite by hand the columns that survive in `scores_`.
+
+## Where to go next
+
+- [`quickstart.ipynb`](/tutorials/quickstart) puts a knowledge column next to the other parts of the library.
+- [`semantic_encoder.ipynb`](/tutorials/semantic_encoder) builds columns from information that **is** in the table, buried in free text.

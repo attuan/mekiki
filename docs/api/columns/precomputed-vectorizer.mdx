@@ -1,0 +1,38 @@
+---
+title: "PrecomputedVectorizer"
+description: "Vectorizer that only reads precomputed embeddings."
+---
+
+
+```python
+from mekiki import PrecomputedVectorizer
+```
+
+```python
+PrecomputedVectorizer(
+    table: pd.DataFrame,
+    text_col: str,
+    name: str = 'precomputed',
+    missing: str = 'error',
+)
+```
+
+Vectorizer that only reads precomputed embeddings.
+
+For when a text-to-vector table already exists, such as
+`sampledata/processed/*_emb_*.parquet`. **It cannot handle unseen text**,
+so `missing="error"` makes that case noticeable.
+
+## Methods
+
+### `fit`
+
+```python
+fit(texts: pd.Series) -> PrecomputedVectorizer
+```
+
+### `transform`
+
+```python
+transform(texts: pd.Series) -> np.ndarray
+```

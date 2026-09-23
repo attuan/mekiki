@@ -1,0 +1,89 @@
+---
+title: "Diagnosis"
+description: "Stage-1 result. Printing it gives a readable report. The LLM receives as_dict()."
+---
+
+
+```python
+from mekiki import Diagnosis
+```
+
+```python
+Diagnosis(
+    n_rows: int,
+    n_cols: int,
+    target: TargetProfile,
+    columns: list[ColumnProfile],
+    duplicates: DuplicateReport | None = None,
+    duplicates_by_text: DuplicateReport | None = None,
+    screening: dict[str, ScreeningReport] = <factory>,
+    screening_note: str = '',
+    cost_estimate: dict[str, Any] = <factory>,
+    warnings: list[str] = <factory>,
+)
+```
+
+Stage-1 result. Printing it gives a readable report. The LLM receives `as_dict()`.
+
+## Fields
+
+<ParamField path="n_rows" type="int">
+  required
+</ParamField>
+
+<ParamField path="n_cols" type="int">
+  required
+</ParamField>
+
+<ParamField path="target" type="mekiki.diagnose.TargetProfile">
+  required
+</ParamField>
+
+<ParamField path="columns" type="list[mekiki.diagnose.ColumnProfile]">
+  required
+</ParamField>
+
+<ParamField path="duplicates" type="mekiki.leakage.DuplicateReport | None">
+  default `None`
+</ParamField>
+
+<ParamField path="duplicates_by_text" type="mekiki.leakage.DuplicateReport | None">
+  default `None`
+</ParamField>
+
+<ParamField path="screening" type="dict[str, mekiki.screening.ScreeningReport]">
+  default: empty
+</ParamField>
+
+<ParamField path="screening_note" type="str">
+  default `''`
+</ParamField>
+
+<ParamField path="cost_estimate" type="dict[str, typing.Any]">
+  default: empty
+</ParamField>
+
+<ParamField path="warnings" type="list[str]">
+  default: empty
+</ParamField>
+
+
+## Methods
+
+### `as_dict`
+
+```python
+as_dict() -> dict[str, Any]
+```
+
+### `by_kind`
+
+```python
+by_kind(kind: str) -> list[str]
+```
+
+### `column`
+
+```python
+column(name: str) -> ColumnProfile | None
+```

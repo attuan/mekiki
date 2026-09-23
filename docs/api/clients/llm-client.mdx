@@ -1,0 +1,120 @@
+---
+title: "LLMClient"
+description: "A thin client that only asks an LLM to write JSON."
+---
+
+
+```python
+from mekiki import LLMClient
+```
+
+```python
+LLMClient(
+    model: str = 'claude-opus-5',
+    effort: str = 'low',
+    max_tokens: int = 1024,
+    cache_dir: str | Path | None = 'default',
+    api_key: str | None = None,
+    max_workers: int = 8,
+    timeout: float = 120.0,
+    base_url: str | None = None,
+)
+```
+
+A thin client that only asks an LLM to write JSON.
+
+A JSON Schema is passed with every request and the provider guarantees the
+return value matches it (Claude: `output_config.format`; others: LiteLLM's
+`response_format`, which needs `additionalProperties: false` and a full
+`required` list on every object, as mekiki's own schemas have). There is no
+need to write regular expressions here to pick numbers out of text.
+
+`effort` limits the depth of reasoning. On Claude it is `output_config.effort`
+with adaptive thinking left on ("low" is enough for a judgement made on top
+of supplied evidence; switching thinking off invites tool calls or tags leaking
+into the output). On other providers it is sent as `reasoning_effort` and
+silently dropped where the model has no such setting.
+
+`api_key` overrides the environment for the chosen route. Leave it unset to
+read `.env` (Claude: `ANTHROPIC_API_KEY`; others: whatever LiteLLM names,
+see `why_unavailable()`). When that key is missing and `AI_GATEWAY_API_KEY` is
+set, the call goes through the Vercel AI Gateway instead (`via_gateway`).
+
+`base_url` sends the Claude route elsewhere (default: `ANTHROPIC_BASE_URL`, else
+Anthropic). Pointing it at `https://ai-gateway.vercel.sh` uses the gateway even
+when an Anthropic key is present; the key is then `AI_GATEWAY_API_KEY`.
+
+## Methods
+
+### `ask`
+
+```python
+ask(system: str, user: str, schema: dict) -> LLMAnswer
+```
+
+Send system + user and receive one JSON object conforming to schema.
+
+### `ask_many`
+
+```python
+ask_many(
+    system: str,
+    users: Sequence[str],
+    schema: dict,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[LLMAnswer]
+```
+
+Send several rows at once. Parallel, but the results keep the input order.
+
+Only the first row is sent serially, ahead of the rest, **for the sake of
+the prompt cache**. Firing eight requests at once would run them all in
+the "cache not yet created" state, and the shared system prompt would be
+billed at full price eight times. (Providers without an explicit cache
+lose nothing from this.)
+
+### `available`
+
+```python
+available() -> bool
+```
+
+Whether a call can actually be made right now (False without a key).
+
+### `summary`
+
+```python
+summary() -> dict[str, Any]
+```
+
+### `unit_prices`
+
+```python
+unit_prices() -> tuple[float, float]
+```
+
+Input / output dollars per million tokens for this model, for estimates.
+
+Claude comes from `PRICING`; other models from LiteLLM's price list.
+Unknown models fall back to the default Claude model's prices rather
+than raising, because an estimate is better than no estimate.
+
+### `why_unavailable`
+
+```python
+why_unavailable() -> str | None
+```
+
+The reason a call would fail, as a sentence telling the user what to do.
+
+None when everything is in place. The Claude route only checks the key
+(the `anthropic` package is reported at call time). The LiteLLM
+route needs the package to know which key names the provider expects, so
+a missing package is reported first.
+
+
+## Attributes
+
+<ParamField path="via_gateway">
+  Whether calls go through the Vercel AI Gateway rather than the provider.
+</ParamField>

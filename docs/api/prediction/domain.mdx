@@ -1,0 +1,99 @@
+---
+title: "Domain"
+description: "The words that tell the LLM \"what is predicted, about what\". Prompts are built from this."
+---
+
+
+```python
+from mekiki import Domain
+```
+
+```python
+Domain(
+    role: str = 'an analyst who estimates the target from the given evidence',
+    subject: str = 'record',
+    subject_heading: str = 'the record to predict',
+    target_name: str | None = None,
+    hints: list[str] = <factory>,
+    class_names: dict = <factory>,
+    system_prompt: str | None = None,
+    answer_schema: dict | None = None,
+    answer_key: str = 'value',
+)
+```
+
+The words that tell the LLM "what is predicted, about what". Prompts are built from this.
+
+The internals of [`EvidencePredictor`](/api/prediction/evidence-predictor) (statistical models, neighbour search, provenance) do not
+depend on the dataset, but the prompt wording works better when it knows the field.
+Only that part is gathered here; the default (no arguments) is wording that does not
+commit to any field.
+
+<ParamField path="role" type="str">
+  The X in "You are X". E.g. "a wine judge" / "a churn analyst" / "a used-car appraiser"
+</ParamField>
+
+<ParamField path="subject" type="str">
+  What one record is. E.g. "wine" / "customer" / "car".
+  Used as in "answer the ... of this \{subject\}"
+</ParamField>
+
+<ParamField path="subject_heading" type="str">
+  The heading that refers to the row being predicted. Default "the record to
+  predict". E.g. "the customer in question" / "the car being appraised"
+</ParamField>
+
+<ParamField path="target_name" type="str | None">
+  The name of the target. E.g. "price" / "points" / "churn". None uses the column name
+</ParamField>
+
+<ParamField path="hints" type="list[str]">
+  Field-specific guidance: what to pick up from the free text, what to ignore, etc.
+  One bullet per string
+</ParamField>
+
+<ParamField path="class_names" type="dict">
+  For classification, label -> its meaning. E.g. \{"Yes": "churned", "No": "stayed"\}.
+  The prompt shows them as "Yes (churned)"
+</ParamField>
+
+<ParamField path="system_prompt / answer_schema / answer_key">
+  Hooks for **replacing the wording and the schema wholesale**. Used by `USED_CAR`.
+  Normally left alone. Changing them changes the LLM cache key, so previously
+  cached answers are no longer reused
+</ParamField>
+
+## The `USED_CAR` preset
+
+`mekiki.USED_CAR` is a `Domain` with the wording used for used-car prices. It replaces the system prompt and the answer schema wholesale, so pass it whenever you work on used-car listings (the generic wording gives a different cache key).
+
+```python
+from mekiki import USED_CAR
+
+USED_CAR.role            # 'a used-car appraiser'
+USED_CAR.subject         # 'car'
+USED_CAR.subject_heading # 'the car being appraised'
+USED_CAR.target_name     # 'price'
+USED_CAR.answer_key      # 'price'
+```
+
+Hints given to the LLM:
+
+- Pick up anything that moves the price: accident history, modifications, defects, included accessories, an urgent sale, and so on. But sales talk ("beautiful car", "great deal") appears in every listing, so do not treat it as grounds for the price.
+
+
+## Methods
+
+### `label`
+
+```python
+label(c: Any) -> str
+```
+
+Render a label in a human-readable form, with its meaning attached.
+
+### `name_of`
+
+```python
+name_of(target: str) -> str
+```

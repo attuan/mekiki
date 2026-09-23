@@ -1,0 +1,413 @@
+---
+title: "diagnose: where to start with a new table"
+description: "Where to start with a new table: rules and measurements for free, then an LLM that reads the column names and writes the configuration."
+---
+
+
+<Info>
+This page is generated from a notebook committed with the outputs of a real run. [Open it on GitHub](https://github.com/attuan/mekiki/blob/main/examples/diagnose.ipynb) or [run it in Colab](https://colab.research.google.com/github/attuan/mekiki/blob/main/examples/diagnose.ipynb).
+</Info>
+
+The other parts of mekiki run after somebody has decided things: which columns are numeric, which one is free text, whether the text is worth sending to an LLM, what to tell the LLM about the field. [`diagnose`](/api/inspection/diagnose) covers the step before that. Give it a table and the name of the target, and it returns a starting configuration.
+
+- **Stage 1 is rules and measurements.** It is free, offline and deterministic.
+- **Stage 2 lets an LLM read the column names and a few example values**, then turn the stage 1 numbers into a configuration for this particular field. It costs a few cents.
+
+The last section is [`screen`](/api/inspection/screen), the measurement inside [`diagnose`](/api/inspection/diagnose) that answers one question on its own: does this text column explain the target at all?
+
+Everything except one cell is free. That cell needs an Anthropic API key and costs about $0.08 on a first run; the output saved here was replayed from the response cache.
+
+```python
+# On Colab or in a fresh environment, uncomment these and run them once.
+# %pip install -q "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+# import getpass, os; os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
+```
+
+## 1. A table nobody has cleaned
+
+```python
+import pandas as pd
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("vehicles_sample500.csv"))
+df.shape
+```
+
+```text
+(500, 26)
+```
+
+500 Craigslist used-car listings with 26 columns, exactly as downloaded. The other notebooks filter this table before using it; here it goes in raw, because finding out what needs filtering is the job.
+
+## 2. Stage 1: rules and measurements
+
+[`diagnose`](/api/inspection/diagnose) needs two things: the table and the name of the target column. Every other column gets diagnosed. `unit` is the unit shown in the report and in the input to the LLM, and can be left out. Regression or classification is decided from the target values (pass `task=` if it guesses wrong), and `llm=False` runs stage 1 only.
+
+On the car table:
+
+```python
+from mekiki import diagnose
+
+rec = diagnose(df, target="price", unit="USD", llm=False)
+print(rec)
+```
+
+```text
+Diagnosis (500 rows x 26 columns)
+
+  Target price: regression. median 1.699e+04 / mean 1.994e+06 / max 9.877e+08 (mean/median 117.35)
+    -> strongly skewed. A log transform (log1p) is recommended
+    -> the max is an order of magnitude above the 99.5th percentile (8.603e+04). Clipping outliers is recommended
+
+  Column kinds:
+    numeric        year, odometer, lat, long
+    categorical    region, manufacturer, condition, cylinders, fuel, title_status, transmission, drive, size, type, paint_color, state
+    short text     model
+    free text      description
+    id-like        id, url, region_url, VIN, image_url
+    date-like      posting_date
+    constant/empty county
+  Columns with doubts:
+    id: Integer, distinct in nearly every row, and the name looks like an id
+    url: URL. Not a feature as is
+    region_url: URL. Not a feature as is
+    model: Short strings with many (325) distinct values. Could also be categorical
+    VIN: The name looks like an id but the same value appears in several rows (unique rate 94%). The same item may be listed multiple times
+    image_url: URL. Not a feature as is
+    county: At most one distinct value. Cannot be a feature
+
+  Duplicates (compared on 19 columns): 20 rows (4.0%)
+  Duplicates (compared on description only): 12 rows (2.5%)
+  Text model: contribution -9.9% (MAE 0.921 -> 1.012) -> unlikely_to_help
+  Text description: contribution +15.4% (MAE 0.921 -> 0.7793) -> worth_trying
+    Note: measured after preprocessing the target: dropped the top 0.5%; applied log1p (MAE is in log units)
+  EvidencePredictor on all rows: about $4.30 / about 5 min ($0.0086 per row)
+
+  Warnings:
+    - The mean of target price is 117.4x its median. Training on MAE as is will be pulled towards the high end. Consider a log transform
+    - The max of target price, 9.877e+08, exceeds 10x the 99.5th percentile 8.603e+04. Possible input error. Clip outliers before training
+    - Target price is <= 0 in 26 rows. If it is a price, suspect input errors
+    - Missing rate of size is 81%
+    - Id-like columns ['id', 'url', 'region_url', 'VIN', 'image_url'] are not used as features
+    - 20 rows (4.0%) have identical content. Collapse to one row per item before evaluating
+
+
+Recommendation (built by rules only (LLM not used))
+
+  Task: regression, target transformed with log1p, top 0.5% dropped as outliers
+  spec: numeric=['year', 'odometer', 'lat', 'long']
+        categorical=['region', 'manufacturer', 'condition', 'cylinders', 'fuel', 'title_status', 'transmission', 'drive', 'size', 'type', 'paint_color', 'state']
+        text='model'
+        long_text='description' (amounts masked)
+  domain: role "an analyst who estimates the target from the given evidence", subject "record", target "price" (USD)
+  Ignored in duplicate detection: ['id', 'url', 'region_url', 'VIN', 'image_url', 'posting_date', 'county']
+  EvidencePredictor: worth trying
+  adaptive: start with the top 20%
+
+  Reasons:
+    column_assignment: Decided mechanically from dtype, number of distinct values and mean length. Column meanings were not considered
+    feature_b: The text contribution of description, 15.4%, exceeds the threshold 10%
+    adaptive: About $4.30 for all rows. Start with 20% to see the effect
+
+  Warnings:
+    - The mean of target price is 117.4x its median. Training on MAE as is will be pulled towards the high end. Consider a log transform
+    - The max of target price, 9.877e+08, exceeds 10x the 99.5th percentile 8.603e+04. Possible input error. Clip outliers before training
+    - Target price is <= 0 in 26 rows. If it is a price, suspect input errors
+    - Missing rate of size is 81%
+    - Id-like columns ['id', 'url', 'region_url', 'VIN', 'image_url'] are not used as features
+    - 20 rows (4.0%) have identical content. Collapse to one row per item before evaluating
+```
+
+The report has the same parts in the same order for any table: the target's distribution, the column kinds, duplicates, whether the text helps, and what the LLM would cost. Reading this one from the top:
+
+- **The target.** The mean price is 117 times the median, and the maximum is $988 million. That is an input error, not a car. The advice is to drop the top 0.5% and train on the log.
+- **Column kinds.** Every column is sorted into numeric, categorical, short text, free text, id-like, date-like or constant. This becomes the column specification below. The doubts are listed too: `model` has 325 distinct values and could be read either way.
+- **Duplicates.** 20 rows are the same car listed more than once. With those left in, a random split puts the same car in train and test.
+- **Is the text worth it?** Tree models were trained with and without each text column. `description` improves the error by 15% (worth trying); `model` as raw text does not help.
+- **The bill.** Sending every row to the LLM would cost about $4.30.
+
+The report is for reading. The same content is available as objects, ready to pass on. The column specification, for one:
+
+```python
+rec.spec
+```
+
+```text
+ColumnSpec(numeric=['year', 'odometer', 'lat', 'long'], boolean=[], categorical=['region', 'manufacturer', 'condition', 'cylinders', 'fuel', 'title_status', 'transmission', 'drive', 'size', 'type', 'paint_color', 'state'], text='model', long_text='description', long_text_chars=2000, long_text_example_chars=0, mask_amounts_in_long_text=None)
+```
+
+## 3. Follow the recommendation
+
+The recommendation comes down to three steps: collapse duplicates, drop outliers in the target, and hand the column spec and settings to the model. The first two are only needed when the report raises them. The third has the same shape for any table: pass `rec.spec`, `rec.domain` and `rec.escalate_rate` straight to [`EvidencePredictor`](/api/prediction/evidence-predictor).
+
+This table needs all three. Keep one row per car (rows that agree on every column the model will use are the same car), drop the top 0.5%, and hand `rec.spec` to [`EvidencePredictor`](/api/prediction/evidence-predictor). `plan` is free, so this stops right before the first paid step.
+
+```python
+from sklearn.model_selection import train_test_split
+from mekiki import EvidenceRegressor
+
+clean = df.drop_duplicates(subset=rec.spec.all_columns())
+clean = clean[clean["price"] <= clean["price"].quantile(0.995)].reset_index(drop=True)
+
+train, test = train_test_split(clean, test_size=60, random_state=0)
+train, test = train.reset_index(drop=True), test.reset_index(drop=True)
+
+model = EvidenceRegressor(target="price", unit="USD", spec=rec.spec,
+                          domain=rec.domain, escalate_rate=rec.escalate_rate)
+model.fit(train)
+model.plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'top 20% by signal',
+ 'n_escalated': 12,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 48,
+ 'estimated_cost_usd': 0.1032,
+ 'estimated_seconds': 33.0,
+ 'cost_per_row_usd': 0.0086}
+```
+
+From a raw CSV to a fitted model and a cost estimate, without writing a column list by hand. `to_code()` gives the whole recipe as a Python script, including the log transform, for pasting into your own project:
+
+```python
+print(rec.to_code())
+```
+
+```text
+import numpy as np
+from mekiki import EvidenceRegressor, Domain, check_duplicates
+
+# Compare duplicates without the columns that differ even for the same item, then collapse to one row per item
+ignore = ['id', 'url', 'region_url', 'VIN', 'image_url', 'posting_date', 'county']
+print(check_duplicates(df, ignore=ignore))
+df = df.loc[~df.drop(columns=ignore).duplicated()].reset_index(drop=True)
+
+# The top 0.5% may be input errors, so drop them
+df = df[df['price'] <= df['price'].quantile(0.995)]
+
+# Strongly skewed: train on the log and map predictions back with expm1
+df['price_log'] = np.log1p(df['price'])
+
+domain = Domain(role='an analyst who estimates the target from the given evidence', subject='record')
+
+model = EvidenceRegressor(
+    target='price_log',
+    unit='USD',
+    domain=domain,
+    numeric=['year', 'odometer', 'lat', 'long'],
+    categorical=['region', 'manufacturer', 'condition', 'cylinders', 'fuel', 'title_status', 'transmission', 'drive', 'size', 'type', 'paint_color', 'state'],
+    text='model',
+    long_text='description',
+    escalate_rate=0.2,
+)
+model.fit(train)
+print(model.plan(test))   # how many rows, how much, how long (free)
+pred = model.predict(test)
+pred = np.expm1(pred)
+```
+
+The [`Domain`](/api/prediction/domain) in it is a generic one, because stage 1 only measures the table and does not know what it is about. Stage 2 fills that in.
+
+## 4. Stage 2: let the LLM read the column meanings
+
+`llm=True` returns the same [`Recommendation`](/api/inspection/recommendation), used the same way. What changes is the content. The LLM revises the stage 1 advice (the column spec, the target transform, the columns to ignore when looking for duplicates, the share of rows to send to the LLM) and adds three things stage 1 cannot write: a [`Domain`](/api/prediction/domain) for the field, candidate columns to build from the free text, and candidate columns to build from general knowledge.
+
+For this table, stage 1 knows that `description` is long text and that `price` is skewed. It does not know that this is a table of cars. With `llm=True`, the LLM gets the stage 1 numbers plus the column names and a few example values (never the whole table), and returns the same kind of recommendation, written for this field.
+
+```python
+rec = diagnose(df, target="price", unit="USD", llm=True)
+rec.domain
+```
+
+```text
+Domain(role='a used-car pricing appraiser for online classified listings', subject='a used vehicle listed for sale on Craigslist', subject_heading='the record to predict', target_name='price', hints=['Look in the description for trim level, options/packages, accident or salvage history, and recent repairs', 'Check the stated mileage and condition wording against the odometer and condition columns', 'Dealer boilerplate (e.g. Carvana) suggests retail pricing rather than private-party pricing'], class_names={}, system_prompt=None, answer_schema=None, answer_key='value')
+```
+
+It worked out the field from the column names and wrote the [`Domain`](/api/prediction/domain) that [`EvidencePredictor`](/api/prediction/evidence-predictor) and [`KnowledgeEncoder`](/api/columns/knowledge-encoder) take: who the LLM should be, what one record is, and what to look for in the free text. It also proposes columns the table does not have. From the free text, as [`SemanticEncoder`](/api/columns/semantic-encoder) candidates:
+
+```python
+pd.DataFrame(rec.typed_columns)[["name", "source", "values", "why"]]
+```
+
+|  | name | source | values | why |
+|---|---|---|---|---|
+| 0 | trim_level | description | [base, mid, premium, unknown] | model samples such as 'sierra 1500 crew cab sl... |
+| 1 | accident_or_salvage_mentioned | description | [yes, no] | title_status has values like 'rebuilt'/'lien' ... |
+| 2 | seller_type | description | [dealer, private, unknown] | sample descriptions begin with dealer boilerpl... |
+| 3 | warranty_mentioned | description | [yes, no] | dealer listings commonly state warranty, which... |
+
+And from general knowledge, as [`KnowledgeEncoder`](/api/columns/knowledge-encoder) candidates:
+
+```python
+pd.DataFrame(rec.knowledge_columns)[["name", "keys", "attribute", "type", "why"]]
+```
+
+|  | name | keys | attribute | type | why |
+|---|---|---|---|---|---|
+| 0 | brand_origin | [manufacturer] | country/region of the brand | category | manufacturer has only 33 distinct values (gmc,... |
+| 1 | brand_tier | [manufacturer] | market positioning of the brand | category | brand tier strongly shapes price and is infera... |
+| 2 | typical_new_price | [manufacturer, type] | typical new-vehicle price for this brand and b... | numeric | manufacturer (33 values) and type (13 values, ... |
+| 3 | is_full_size_truck | [type, size] | whether the body class is a full-size truck/SUV | binary | type and size have 13 and 3 values; full-size ... |
+
+These are proposals and nothing has been built, because building costs LLM calls and whether a column helps is only known after scoring it. [`knowledge_encoder.ipynb`](/tutorials/knowledge_encoder) builds the third one and measures what it does to the price prediction. In `to_code()` they appear as commented-out lines, next to the [`Domain`](/api/prediction/domain) from above:
+
+```python
+print(rec.to_code())
+```
+
+```text
+import numpy as np
+from mekiki import EvidenceRegressor, Domain, check_duplicates, SemanticEncoder, KnowledgeEncoder
+
+# Compare duplicates without the columns that differ even for the same item, then collapse to one row per item
+ignore = ['id', 'url', 'region_url', 'VIN', 'image_url', 'posting_date', 'county', 'region', 'state', 'lat', 'long']
+print(check_duplicates(df, ignore=ignore))
+df = df.loc[~df.drop(columns=ignore).duplicated()].reset_index(drop=True)
+
+# The top 0.5% may be input errors, so drop them
+df = df[df['price'] <= df['price'].quantile(0.995)]
+
+# Strongly skewed: train on the log and map predictions back with expm1
+df['price_log'] = np.log1p(df['price'])
+
+# SemanticEncoder candidate: model samples such as 'sierra 1500 crew cab slt' show trim wording; descriptions of 2958 chars likely name the trim
+# df['trim_level'] = SemanticEncoder(source='description', type='category', values=['base', 'mid', 'premium', 'unknown']).fit_transform(df)
+
+# SemanticEncoder candidate: title_status has values like 'rebuilt'/'lien' and is 10% missing; the free text can supply it
+# df['accident_or_salvage_mentioned'] = SemanticEncoder(source='description', type='binary', values=['yes', 'no']).fit_transform(df)
+
+# SemanticEncoder candidate: sample descriptions begin with dealer boilerplate ('Carvana is the safer way to buy a car'), which separates retail from private pricing
+# df['seller_type'] = SemanticEncoder(source='description', type='category', values=['dealer', 'private', 'unknown']).fit_transform(df)
+
+# SemanticEncoder candidate: dealer listings commonly state warranty, which shifts asking price
+# df['warranty_mentioned'] = SemanticEncoder(source='description', type='binary', values=['yes', 'no']).fit_transform(df)
+
+# Knowledge column candidate: manufacturer has only 33 distinct values (gmc, chevrolet, toyota) and origin is common knowledge
+# df = df.join(KnowledgeEncoder(keys=['manufacturer'], attribute='country/region of the brand', type='category', values=['usa', 'japan', 'korea', 'germany', 'other_europe', 'other'], name='brand_origin', target='price').fit_transform(df))
+
+# Knowledge column candidate: brand tier strongly shapes price and is inferable from the 33 manufacturer values
+# df = df.join(KnowledgeEncoder(keys=['manufacturer'], attribute='market positioning of the brand', type='category', values=['economy', 'mainstream', 'premium', 'luxury'], name='brand_tier', target='price').fit_transform(df))
+
+# Knowledge column candidate: manufacturer (33 values) and type (13 values, pickup/truck/other) are low-cardinality and jointly imply a price band
+# df = df.join(KnowledgeEncoder(keys=['manufacturer', 'type'], attribute='typical new-vehicle price for this brand and body style', type='numeric', unit='USD', name='typical_new_price', target='price').fit_transform(df))
+
+# Knowledge column candidate: type and size have 13 and 3 values; full-size trucks hold value differently
+# df = df.join(KnowledgeEncoder(keys=['type', 'size'], attribute='whether the body class is a full-size truck/SUV', type='binary', values=['yes', 'no'], name='is_full_size_truck', target='price').fit_transform(df))
+
+domain = Domain(role='a used-car pricing appraiser for online classified listings', subject='a used vehicle listed for sale on Craigslist', target_name='price', hints=["Look in the description for trim level, options/packages, accident or salvage history, and recent repairs", "Check the stated mileage and condition wording against the odometer and condition columns", "Dealer boilerplate (e.g. Carvana) suggests retail pricing rather than private-party pricing"])
+
+model = EvidenceRegressor(
+    target='price_log',
+    unit='USD',
+    domain=domain,
+    numeric=['year', 'odometer', 'lat', 'long'],
+    categorical=['region', 'manufacturer', 'condition', 'cylinders', 'fuel', 'title_status', 'transmission', 'drive', 'size', 'type', 'paint_color', 'state'],
+    text='model',
+    long_text='description',
+    escalate_rate=0.2,
+)
+model.fit(train)
+print(model.plan(test))   # how many rows, how much, how long (free)
+pred = model.predict(test)
+pred = np.expm1(pred)
+```
+
+Every recommendation comes with the number it was derived from:
+
+```python
+pd.Series(rec.reasons)
+```
+
+```text
+target_transform           mean 1,993,599 is 117.4x the median 16,988, so...
+clip_outliers                 max 987,654,321 exceeds 10x the p995 of 86,030
+text = model               model has 325 distinct short strings (mean 13....
+long_text = description    description contributes +0.1539 MAE in log uni...
+use_evidence               description is rated worth_trying, so the LLM ...
+escalate_rate              cost is 0.0086 USD/row (4.3 USD for all 500 ro...
+dedup_ignore               added region, state, lat and long: the same ve...
+excluded columns           id, url, region_url, image_url are identifiers...
+dtype: str
+```
+
+## 5. [`screen`](/api/inspection/screen): does the text explain the target?
+
+The most useful single line of the report is available by itself. [`screen`](/api/inspection/screen) trains tree models with and without a text column and compares them on the same folds. It never calls an LLM, so it is the check to run before spending anything. It takes the table, the target and the name of the text column. Other features go in through `numeric=` and `categorical=`, and both models get them.
+
+The news data shows both answers. Each item has the number of times it was shared on Facebook, and a topic. Does the headline predict the share count?
+
+```python
+from mekiki import screen
+
+news = pd.read_csv(sample_data("news_sample500.csv"))
+measured = news[news["Facebook"] >= 0]          # -1 means "not measured", not zero
+
+print(screen(measured, target="Facebook", text="Headline", unit="shares",
+             numeric=["SentimentTitle", "SentimentHeadline"], categorical=["Topic"]))
+```
+
+```text
+Measured how much the text column "Headline" explains "Facebook" (451 rows / 451 distinct values / mean 161 characters)
+
+  LightGBM without text   MAE           338.5 shares
+  LightGBM with text      MAE           363.7 shares
+  text contribution                      -7.5 % (threshold 10%)
+
+  Verdict: unlikely_to_help
+  -> The text barely explains Facebook. Little gain can be
+     expected from having the LLM read it; the statistical models are
+     probably enough. (Consider building another column with SemanticEncoder,
+     or collecting different columns altogether, first.)
+
+  Note: this verdict is a provisional line drawn from two measured datasets (both regression).
+     The final call should come from a small real run of EvidencePredictor (about 60 rows).
+```
+
+It does not: the model with the headline is slightly worse. Having an LLM read these headlines to predict shares would be money spent on nothing. The topic is another matter:
+
+```python
+report = screen(news, target="Topic", text="Headline", task="classification",
+                numeric=["SentimentTitle", "SentimentHeadline"])
+print(report)
+```
+
+```text
+Measured how much the text column "Headline" explains "Topic" (500 rows / 499 distinct values / mean 161 characters)
+
+  LightGBM without text   log loss      2.271
+  LightGBM with text      log loss     0.2958
+  text contribution                      87.0 % (threshold 10%)
+
+  Verdict: worth_trying
+  -> The text explains Topic. There is room for the LLM
+     to read it better than character TF-IDF, so EvidencePredictor is worth trying.
+
+  Note: this verdict is a provisional line drawn from two measured datasets (both regression).
+     The final call should come from a small real run of EvidencePredictor (about 60 rows).
+```
+
+The verdict and the numbers behind it are attributes, for use in a pipeline:
+
+```python
+report.verdict, round(report.text_contribution, 3)
+```
+
+```text
+('worth_trying', 0.87)
+```
+
+## Using it on your own table
+
+The only car-specific parts of the code above are the line that loads the data and the two words `"price"` and `"USD"`. The column lists, the columns to ignore for duplicates and the share of rows sent to the LLM are all read from `rec`, so the same code runs on another table. Three things can differ.
+
+- **Classification.** A target of strings or booleans, or of integers with at most 10 distinct values, is treated as classification automatically. Otherwise pass `task="classification"`.
+- **Which steps you need.** Handle duplicates and outliers only when the report raises them. If it does not, start from handing over `rec.spec`.
+- **Columns with doubts.** Read the reason the report gives and decide yourself. `rec.spec` is a plain object, so you can edit it before it goes to the model.
+
+## Where to go next
+
+- [`quickstart.ipynb`](/tutorials/quickstart) starts from [`diagnose`](/api/inspection/diagnose) and carries on to a prediction.
+- [`semantic_encoder.ipynb`](/tutorials/semantic_encoder) and [`knowledge_encoder.ipynb`](/tutorials/knowledge_encoder) build the two kinds of column that stage 2 proposes.

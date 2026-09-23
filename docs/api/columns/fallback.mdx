@@ -1,0 +1,40 @@
+---
+title: "Fallback"
+description: "The shape a fallback stage must satisfy. Implement and plug it in once an API key exists."
+---
+
+
+```python
+from mekiki import Fallback
+```
+
+*Protocol.* Anything with these members plugs in; there is nothing to subclass.
+
+The shape a fallback stage must satisfy. Implement and plug it in once an API
+key exists.
+
+A stage may also carry a `threshold` attribute (as [`JevFallback`](/api/columns/jev-fallback) does): answers whose
+confidence falls below it are handed to the next stage of the chain instead of being
+accepted. Without the attribute every answer with a value is accepted.
+
+## Members
+
+<ParamField path="cost_per_call" type="float">
+  Attribute.
+</ParamField>
+
+### `can_answer`
+
+```python
+can_answer() -> bool
+```
+
+Whether it can actually be called right now (False if no key is set).
+
+### `answer`
+
+```python
+answer(texts: list[str], values: list[str] | None, context: list[dict]) -> list[Answer]
+```
+
+Return a value for each row of texts. context holds the neighbouring examples.

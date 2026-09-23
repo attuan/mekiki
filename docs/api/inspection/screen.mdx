@@ -1,0 +1,68 @@
+---
+title: "screen"
+description: "Measure how much a text column explains the target. Does not call the LLM."
+---
+
+
+```python
+from mekiki import screen
+```
+
+```python
+screen(
+    df: pd.DataFrame,
+    target: str,
+    text: str,
+    *,
+    task: str = 'regression',
+    target_name: str | None = None,
+    numeric: Sequence[str] = (),
+    boolean: Sequence[str] = (),
+    categorical: Sequence[str] = (),
+    unit: str = '',
+    n_splits: int = 5,
+    sample: int | None = 20000,
+    max_text_chars: int = 500,
+    threshold: float = 0.1,
+) -> ScreeningReport
+```
+
+Measure how much a text column explains the target. **Does not call the LLM.**
+
+<ParamField path="df, target, text">
+  The data, the target column name, and the text column to evaluate.
+</ParamField>
+
+<ParamField path="task">
+  "regression" (default, metric MAE) or "classification" (metric log loss).
+</ParamField>
+
+<ParamField path="target_name">
+  How the target is referred to in the report text. Defaults to the column name.
+</ParamField>
+
+<ParamField path="numeric / boolean / categorical">
+  Structured columns forming the baseline. A weak baseline overstates the
+  text contribution.
+</ParamField>
+
+<ParamField path="sample">
+  Upper bound on rows. Thinned to 20,000 rows by default so large data does
+  not keep you waiting. `None` uses every row.
+</ParamField>
+
+<ParamField path="max_text_chars">
+  How many leading characters of the text to look at. **Character n-gram
+  TF-IDF gets very slow on long text** (the Craigslist used-car descriptions average 2,320
+  characters; 20,000 rows take minutes). The verdict only needs the order of
+  magnitude of "does text help", so the default cuts at 500 characters.
+  `0` means no cut.
+</ParamField>
+
+<ParamField path="threshold">
+  Lower bound of the contribution for a "worth_trying" verdict.
+</ParamField>
+
+**Returns**
+
+[`ScreeningReport`](/api/inspection/screening-report). Printing it gives a readable summary.

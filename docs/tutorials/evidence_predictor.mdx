@@ -1,0 +1,337 @@
+---
+title: "EvidencePredictor: statistical models first, the LLM where they are unsure"
+description: "Statistical models first, the LLM where they are unsure: which rows to send, how many, classification, your own model and routing rule."
+---
+
+
+<Info>
+This page is generated from a notebook committed with the outputs of a real run. [Open it on GitHub](https://github.com/attuan/mekiki/blob/main/examples/evidence_predictor.ipynb) or [run it in Colab](https://colab.research.google.com/github/attuan/mekiki/blob/main/examples/evidence_predictor.ipynb).
+</Info>
+
+[`EvidencePredictor`](/api/prediction/evidence-predictor) does not hand a row to an LLM and ask for a number. It first lets statistical models answer (LightGBM, XGBoost and a nearest-neighbour lookup). For the rows where those models are unsure, it gives the LLM their predictions, the most similar known cases and the free text, and asks for the final call. The other rows keep the statistical answer and cost nothing.
+
+[`quickstart.ipynb`](/tutorials/quickstart) runs it once. This notebook is about the decisions around it:
+
+- which rows go to the LLM, and the ways to choose them
+- how much to send: accuracy, cost and time at every rate, in one table
+- classification, in a field other than cars
+- plugging in your own routing rule and your own model
+
+You need an Anthropic API key. A first run costs about $0.75 in total ($0.61 + $0.15); responses are cached on disk, so running again is free. The outputs saved here were replayed from that cache, which is why single runs print a cost of $0.
+
+```python
+# On Colab or in a fresh environment, uncomment these and run them once.
+# %pip install -q "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+# import getpass, os; os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
+```
+
+## 1. The data and the model
+
+You declare to [`EvidencePredictor`](/api/prediction/evidence-predictor) the target (`target`, `unit`), how each column is treated (`numeric`, `categorical`, `text` for short text, `long_text` for free text), a [`Domain`](/api/prediction/domain) for the field, and the share of rows to send to the LLM (`escalate_rate`). `fit` only trains the statistical models and calls no LLM.
+
+On the car table:
+
+```python
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from mekiki import USED_CAR, EvidenceClassifier, EvidenceRegressor, diagnose
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("vehicles_sample500.csv"))
+df = df[df["price"].between(1_000, 100_000)]
+df = df.dropna(subset=["year", "odometer", "manufacturer", "description"]).reset_index(drop=True)
+rec = diagnose(df, target="price", unit="USD", llm=False)      # finds cars that were listed twice
+df = df.loc[~df.drop(columns=rec.dedup_ignore).duplicated()].reset_index(drop=True)
+
+train, test = train_test_split(df, test_size=60, random_state=0)
+train, test = train.reset_index(drop=True), test.reset_index(drop=True)
+
+columns = dict(
+    target="price", unit="USD", domain=USED_CAR,
+    numeric=["year", "odometer"],
+    categorical=["manufacturer", "fuel", "transmission", "drive", "type"],
+    text="model", long_text="description",
+)
+model = EvidenceRegressor(escalate_rate=0.3, **columns)
+model.fit(train)
+```
+
+```text
+EvidenceRegressor(target='price', signal='disagreement', top 30% by signal)
+```
+
+The used-car listings from the quickstart: 356 cars to learn from, 60 to predict. The tree models get the numeric and categorical columns. `long_text` is never given to them; reading it is the LLM's job.
+
+## 2. Which rows go to the LLM
+
+Routing is decided before any LLM call, from a **signal** computed for each row. The default signal is `disagreement`: how far apart the tree models' predictions are. `plan` shows the decision for free.
+
+```python
+model.plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'top 30% by signal',
+ 'n_escalated': 18,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 42,
+ 'estimated_cost_usd': 0.1548,
+ 'estimated_seconds': 37.6,
+ 'cost_per_row_usd': 0.0086}
+```
+
+`escalate_rate=0.3` sends the 30% of rows with the largest signal. If you think in absolute terms instead, pass a `threshold` on the signal. Here: escalate when the tree models are more than $5,000 apart.
+
+```python
+EvidenceRegressor(threshold=5_000, **columns).fit(train).plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'signal >= 5000',
+ 'n_escalated': 13,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 47,
+ 'estimated_cost_usd': 0.1118,
+ 'estimated_seconds': 33.0,
+ 'cost_per_row_usd': 0.0086}
+```
+
+Two other signals are built in: `signal="similarity"` escalates the rows with no close match among the known cases, and `signal="unseen"` the rows containing category levels or words that never appeared in training. Section 5 writes a signal from scratch.
+
+Now the paid step, and the record of what happened to each row:
+
+```python
+pred = model.predict(test)
+model.route().round(2).head(8)
+```
+
+|  | row | route | source | signal | prediction | confidence | cost_usd |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 | fast | model | 2154.42 | 11490.33 | 0.89 | 0.0 |
+| 1 | 1 | llm | llm | 9043.21 | 9500.00 | 0.35 | 0.0 |
+| 2 | 2 | fast | model | 2116.17 | 1334.02 | 0.89 | 0.0 |
+| 3 | 3 | fast | model | 2294.63 | 32893.06 | 0.88 | 0.0 |
+| 4 | 4 | fast | model | 1490.12 | 9362.78 | 0.92 | 0.0 |
+| 5 | 5 | fast | model | 35.40 | 3942.43 | 1.00 | 0.0 |
+| 6 | 6 | fast | model | 1161.04 | 38409.75 | 0.94 | 0.0 |
+| 7 | 7 | fast | model | 1897.79 | 6048.83 | 0.90 | 0.0 |
+
+Row 1 had the tree models $9,043 apart and went to the LLM; row 5 had them $35 apart and did not. Every row also keeps each model's own prediction, so the result can be compared with LightGBM alone on the same rows (mean absolute error, USD):
+
+```python
+truth = test["price"]
+lgbm = model.provenance()["evidence_LightGBM"]
+error = pd.DataFrame({"mekiki": (pred - truth).abs(), "LightGBM alone": (lgbm - truth).abs()})
+
+sent = model.route()["route"] == "llm"
+table = error.groupby(sent.map({True: "sent to the LLM", False: "kept on the fast path"})).mean()
+table.loc["all rows"] = error.mean()
+table.round(0)
+```
+
+```text
+                       mekiki  LightGBM alone
+route                                        
+kept on the fast path  4207.0          4207.0
+sent to the LLM        4824.0          8307.0
+all rows               4392.0          5437.0
+```
+
+## 3. How much to send
+
+Is 30% the right rate? `curve` answers for every rate at once. It sends **every** test row to the LLM once (about $0.61 for these 60 rows; the 18 above were already cached), and then reports what the error, the cost and the time would have been if only that share had been sent.
+
+```python
+model.curve(test).round(2)
+```
+
+|  | rate | n_escalated | MAE | cost_usd | estimated_seconds |
+|---|---|---|---|---|---|
+| 0 | 0.00 | 0 | 5437.26 | 0.00 | 23.9 |
+| 1 | 0.10 | 6 | 4913.26 | 0.05 | 28.5 |
+| 2 | 0.20 | 12 | 4475.37 | 0.10 | 33.0 |
+| 3 | 0.30 | 18 | 4392.47 | 0.15 | 37.6 |
+| 4 | 0.50 | 30 | 3702.46 | 0.26 | 42.2 |
+| 5 | 0.75 | 45 | 3239.95 | 0.39 | 51.5 |
+| 6 | 1.00 | 60 | 2734.62 | 0.52 | 60.6 |
+
+On these cars the error keeps falling all the way: $5,437 with no LLM, $4,392 at 30%, $2,735 with every row sent, which the table prices at $0.52 (the cost column uses the estimated price per row; the first run here actually cost $0.61). The descriptions carry information the structured columns do not. The curve is how you find that out for your own table, on a small test set, before committing to a rate on the full data. On another table the curve can be flat, and then the right rate is zero.
+
+## 4. Classification, in another field
+
+Nothing above is specific to prices or to cars. This table is a bank's phone campaign: one row per customer contacted, and `y` says whether they subscribed to a term deposit. There is no free text at all.
+
+The [`Domain`](/api/prediction/domain) tells the LLM who it is, what one record is, and what the class labels mean.
+
+```python
+from mekiki import Domain
+
+bank = pd.read_csv(sample_data("bank_sample500.csv"))
+bank_train, bank_test = train_test_split(bank, test_size=60, random_state=0, stratify=bank["y"])
+bank_train, bank_test = bank_train.reset_index(drop=True), bank_test.reset_index(drop=True)
+
+campaign = Domain(
+    role="a marketing analyst at a retail bank",
+    subject="customer contacted in a phone campaign",
+    target_name="whether the customer subscribes to a term deposit",
+    class_names={"yes": "subscribed", "no": "did not subscribe"},
+)
+classifier = EvidenceClassifier(
+    target="y", domain=campaign,
+    numeric=["age", "balance", "campaign", "pdays", "previous"],
+    categorical=["job", "marital", "education", "default", "housing", "loan", "contact", "month", "poutcome"],
+    escalate_rate=0.3,
+)
+classifier.fit(bank_train)
+classifier.plan(bank_test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'top 30% by signal',
+ 'n_escalated': 18,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 42,
+ 'estimated_cost_usd': 0.1548,
+ 'estimated_seconds': 37.6,
+ 'cost_per_row_usd': 0.0086}
+```
+
+For classification the signal is the disagreement between the tree models' class probabilities. `predict` returns labels and `predict_proba` the probabilities, as in scikit-learn.
+
+```python
+labels = classifier.predict(bank_test)
+pd.DataFrame(classifier.predict_proba(bank_test), columns=classifier.classes_).round(3).head()
+```
+
+|  | no | yes |
+|---|---|---|
+| 0 | 0.920 | 0.080 |
+| 1 | 0.987 | 0.013 |
+| 2 | 1.000 | 0.000 |
+| 3 | 0.990 | 0.010 |
+| 4 | 1.000 | 0.000 |
+
+```python
+truth = bank_test["y"]
+lgbm = classifier.provenance()["evidence_LightGBM"]
+correct = pd.DataFrame({"mekiki": labels == truth, "LightGBM alone": lgbm == truth})
+
+sent = classifier.route()["route"] == "llm"
+table = correct.groupby(sent.map({True: "sent to the LLM", False: "kept on the fast path"})).mean()
+table.loc["all rows"] = correct.mean()
+table.round(3)
+```
+
+```text
+                       mekiki  LightGBM alone
+route                                        
+kept on the fast path   0.905           0.905
+sent to the LLM         0.778           0.667
+all rows                0.867           0.833
+```
+
+Read this one with care. The LLM did better than LightGBM on the 18 rows it was given (0.78 against 0.67), but 90% of these customers did not subscribe, so answering "no" every time scores 0.90, above both. With 6 subscribers among 60 test rows, this is too small to conclude anything, and with no free text the LLM has little to read that the trees did not already see. It is here to show the mechanics. `explain` works the same way, with the class meanings spelled out:
+
+```python
+print(classifier.explain(0)[:760])
+```
+
+```text
+[row 0] prediction no (did not subscribe) (no (did not subscribe) 0.92 / yes (subscribed) 0.08) (source llm / confidence 0.90)
+route LLM / signal 0.176103 (escalation rule: top 30% by signal)
+
+Statistical model predictions:
+  - LightGBM: no (did not subscribe) 1.00 / yes (subscribed) 0.00
+  - XGBoost: no (did not subscribe) 0.82 / yes (subscribed) 0.18
+  - 5-NN class rates: no (did not subscribe) 1.00 / yes (subscribed) 0.00
+
+Similar cases consulted:
+  1. whether the customer subscribes to a term deposit no (did not subscribe) (similarity -0.006)
+      - age: 38
+      - balance: 1,604
+      - campaign: 1
+      - pdays: -1
+      - previous: 0
+      - job: unemployed
+      - marital: married
+      - education: secondary
+      - default: no
+      - hous
+```
+
+## 5. Bring your own parts
+
+### Your own routing rule
+
+A signal is a function of the rows and the statistical models' predictions that returns one number per row; larger means "send this one". This one sends the oldest cars first, on the theory that classics are where tree models go wrong.
+
+```python
+def oldest_first(X, evidence):
+    return (2026 - X["year"]).to_numpy()
+
+EvidenceRegressor(escalate_rate=0.3, signal=oldest_first, **columns).fit(train).plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'custom',
+ 'escalation_rule': 'top 30% by signal',
+ 'n_escalated': 18,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 42,
+ 'estimated_cost_usd': 0.1548,
+ 'estimated_seconds': 37.6,
+ 'cost_per_row_usd': 0.0086}
+```
+
+`evidence` is a dict with each model's predictions (`evidence["LightGBM"]`, and so on), so a rule can combine the models' view with the row's own columns.
+
+### Your own model
+
+Anything with a `name`, `fit(train, y)` and `predict(test)` can sit next to the built-in models. It receives the DataFrame as it is, so it picks its own columns. Write `"default"` in the list to keep the three built-in models and add yours.
+
+```python
+from sklearn.linear_model import Ridge
+
+class RidgeOnAgeAndMileage:
+    name = "Ridge (year, odometer)"
+
+    def fit(self, train, y):
+        self.ridge = Ridge().fit(train[["year", "odometer"]], y)
+        return self
+
+    def predict(self, test):
+        return self.ridge.predict(test[["year", "odometer"]])
+
+extended = EvidenceRegressor(escalate_rate=0.3, models=["default", RidgeOnAgeAndMileage()], **columns)
+extended.fit(train)
+pd.DataFrame(extended.evidence(test)).round(0).head()
+```
+
+|  | LightGBM | XGBoost | 5-NN median | Ridge (year, odometer) |
+|---|---|---|---|---|
+| 0 | 11490.0 | 9336.0 | 4000.0 | 17622.0 |
+| 1 | 23921.0 | 14877.0 | 6000.0 | -8722.0 |
+| 2 | 1334.0 | 3450.0 | 4499.0 | 10158.0 |
+| 3 | 32893.0 | 35188.0 | 19900.0 | 11579.0 |
+| 4 | 9363.0 | 10853.0 | 10500.0 | 17663.0 |
+
+The new model's prediction is now part of the evidence the LLM sees for every escalated row. Look at row 1: the ridge regression predicts a negative price. That is why a model of your own does not take part in the `disagreement` signal unless it sets `in_disagreement = True`. The signal is a spread between models, and one weak model would otherwise decide which rows are sent.
+
+## Using it on your own table
+
+- **Columns and the field.** Replace the contents of `columns` with your table's. The column lists and the [`Domain`](/api/prediction/domain) can also come from `rec.spec` and `rec.domain` in [`diagnose.ipynb`](/tutorials/diagnose).
+- **Classification.** Use [`EvidenceClassifier`](/api/prediction/evidence-classifier) and write what the labels mean in the [`Domain`](/api/prediction/domain)'s `class_names`.
+- **Share of rows sent to the LLM.** Look at `plan` first for the row count and the cost. Then run `curve` on a small test set. If the error keeps falling, raise the share; if it is flat, there is no reason to send rows to the LLM.
+- **Tables without free text.** It runs, but there is little the LLM can read that the tree models have not seen, so the gain tends to be small.
+
+## Where to go next
+
+- [`semantic_encoder.ipynb`](/tutorials/semantic_encoder) and [`knowledge_encoder.ipynb`](/tutorials/knowledge_encoder) build new columns to give to this predictor.
+- [`diagnose.ipynb`](/tutorials/diagnose) proposes the column lists and the [`Domain`](/api/prediction/domain) used above, from the table alone.

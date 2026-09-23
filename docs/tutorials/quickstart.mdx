@@ -1,0 +1,459 @@
+---
+title: "mekiki quickstart"
+description: "Used-car prices end to end: diagnose the table, add two columns it does not have, predict with tree models and send only the doubtful rows to an LLM."
+---
+
+
+<Info>
+This page is generated from a notebook committed with the outputs of a real run. [Open it on GitHub](https://github.com/attuan/mekiki/blob/main/examples/quickstart.ipynb) or [run it in Colab](https://colab.research.google.com/github/attuan/mekiki/blob/main/examples/quickstart.ipynb).
+</Info>
+
+Using mekiki comes down to the same four steps on any table: diagnose the table, add columns it does not have, predict with statistical models and send only the doubtful rows to an LLM, then read why an answer came out the way it did. This notebook walks through them on one example, predicting used-car prices from a few hundred Craigslist listings:
+
+- ask mekiki what it makes of the table ([`diagnose`](/api/inspection/diagnose))
+- add two columns **the table does not have**: what each car cost when it was new ([`KnowledgeEncoder`](/api/columns/knowledge-encoder)), and whether the seller is a dealer or a private owner ([`SemanticEncoder`](/api/columns/semantic-encoder))
+- predict the price with tree models, and send only the rows they disagree on to an LLM ([`EvidencePredictor`](/api/prediction/evidence-predictor))
+- read why one row got the answer it did (`explain`)
+
+Loading the data and [`diagnose`](/api/inspection/diagnose) are free and offline. Building the columns and predicting call an LLM, so you need an Anthropic API key; a first run costs about **$1** in total ($0.53 + $0.28 + $0.21). Every response is cached on disk, so running the notebook again is free. The outputs saved in this notebook were replayed from that cache, which is why the costs they print are $0.
+
+```python
+# On Colab or in a fresh environment, uncomment these and run them once.
+# %pip install -q "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+# import getpass, os; os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
+```
+
+## 1. Load the data
+
+```python
+import pandas as pd
+from mekiki.paths import sample_data
+
+df = pd.read_csv(sample_data("vehicles_sample500.csv"))
+df = df[df["price"].between(1_000, 100_000)]
+df = df.dropna(subset=["year", "odometer", "manufacturer", "description"]).reset_index(drop=True)
+df[["year", "manufacturer", "model", "odometer", "description", "price"]].head()
+```
+
+|  | year | manufacturer | model | odometer | description | price |
+|---|---|---|---|---|---|---|
+| 0 | 2014.0 | gmc | sierra 1500 crew cab slt | 57923.0 | Carvana is the safer way to buy a car During t... | 33590 |
+| 1 | 2010.0 | chevrolet | silverado 1500 | 71229.0 | Carvana is the safer way to buy a car During t... | 22590 |
+| 2 | 2020.0 | chevrolet | silverado 1500 crew | 19160.0 | Carvana is the safer way to buy a car During t... | 39590 |
+| 3 | 2017.0 | toyota | tundra double cab sr | 41124.0 | Carvana is the safer way to buy a car During t... | 30990 |
+| 4 | 2013.0 | ford | f-150 xlt | 128000.0 | 2013 F-150 XLT V6 4 Door. Good condition. Leve... | 15000 |
+
+A 500-row excerpt of Craigslist listings, bundled with the package. Each car has the usual structured columns, a free-text `description` written by the seller, and the `price` we want to predict. The raw excerpt contains a $3.7 billion price and rows with the basics missing, so only usable rows are kept.
+
+## 2. Ask mekiki about the table
+
+[`diagnose`](/api/inspection/diagnose) takes the table and the name of the target column. It reports the column kinds, duplicates, skew in the target, whether the text helps, and what the LLM would cost, all for free.
+
+```python
+from mekiki import diagnose
+
+rec = diagnose(df, target="price", unit="USD", llm=False)
+print(rec)
+```
+
+```text
+Diagnosis (422 rows x 26 columns)
+
+  Target price: regression. median 1.992e+04 / mean 2.026e+04 / max 9.995e+04 (mean/median 1.02)
+
+  Column kinds:
+    numeric        year, odometer, lat, long
+    categorical    region, manufacturer, condition, cylinders, fuel, title_status, transmission, drive, size, type, paint_color
+    short text     model
+    free text      description
+    id-like        id, url, region_url, VIN, image_url
+    date-like      posting_date
+    constant/empty county, state
+  Columns with doubts:
+    id: Integer, distinct in nearly every row, and the name looks like an id
+    url: URL. Not a feature as is
+    region_url: URL. Not a feature as is
+    model: Short strings with many (296) distinct values. Could also be categorical
+    VIN: The name looks like an id but the same value appears in several rows (unique rate 94%). The same item may be listed multiple times
+    image_url: URL. Not a feature as is
+    county: At most one distinct value. Cannot be a feature
+    state: At most one distinct value. Cannot be a feature
+
+  Duplicates (compared on 18 columns): 6 rows (1.4%)
+  Duplicates (compared on description only): 6 rows (1.4%)
+  Text model: contribution +9.7% (MAE 5,285 -> 4,771) -> inconclusive
+  Text description: contribution +7.6% (MAE 5,285 -> 4,881) -> inconclusive
+  EvidencePredictor on all rows: about $3.63 / about 4 min ($0.0086 per row)
+
+  Warnings:
+    - Missing rate of size is 83%
+    - Id-like columns ['id', 'url', 'region_url', 'VIN', 'image_url'] are not used as features
+    - 6 rows (1.4%) have identical content. Collapse to one row per item before evaluating
+
+
+Recommendation (built by rules only (LLM not used))
+
+  Task: regression
+  spec: numeric=['year', 'odometer', 'lat', 'long']
+        categorical=['region', 'manufacturer', 'condition', 'cylinders', 'fuel', 'title_status', 'transmission', 'drive', 'size', 'type', 'paint_color']
+        text='model'
+        long_text='description' (amounts masked)
+  domain: role "an analyst who estimates the target from the given evidence", subject "record", target "price" (USD)
+  Ignored in duplicate detection: ['id', 'url', 'region_url', 'VIN', 'image_url', 'posting_date', 'county', 'state']
+  EvidencePredictor: worth trying
+  adaptive: start with the top 20%
+
+  Reasons:
+    column_assignment: Decided mechanically from dtype, number of distinct values and mean length. Column meanings were not considered
+    feature_b: The difference in contribution is too small to decide. Measure on a small scale
+
+  Warnings:
+    - Missing rate of size is 83%
+    - Id-like columns ['id', 'url', 'region_url', 'VIN', 'image_url'] are not used as features
+    - 6 rows (1.4%) have identical content. Collapse to one row per item before evaluating
+```
+
+Two lines matter from here. **6 rows are the same car listed more than once.** Leave them in, and a random split puts the same car in both train and test, which makes every score look better than it is. `rec.dedup_ignore` names the columns that differ between re-listings (ids, URLs, the posting date), so dropping duplicates over the remaining columns keeps one row per car.
+
+The other line: the text columns look useful, but at this size the verdict is **inconclusive**. That is a reason to try on a small scale before paying for every row, which is what the rest of this notebook does. (`print(rec.to_code())` gives all of the above as Python code.)
+
+```python
+df = df.loc[~df.drop(columns=rec.dedup_ignore).duplicated()].reset_index(drop=True)
+len(df)
+```
+
+```text
+416
+```
+
+## 3. Add columns the table does not have
+
+Information a table lacks can come from two places: general knowledge outside the table, and free text inside it. [`KnowledgeEncoder`](/api/columns/knowledge-encoder) turns the first into a column and [`SemanticEncoder`](/api/columns/semantic-encoder) the second, and both only need a declaration.
+
+In this table, the listings say nothing about what a car cost when it was new, and nothing about who is selling it. Both matter to a buyer, and neither can be computed from the existing columns. mekiki builds them from two different sources.
+
+### What did this car cost when new? — [`KnowledgeEncoder`](/api/columns/knowledge-encoder)
+
+This information is **outside the table**: it is general knowledge about car models. You declare three things: the key columns that identify what to ask about (`keys`), what to find out (`attribute`), and the type of the answer (`type`). [`KnowledgeEncoder`](/api/columns/knowledge-encoder) asks the LLM once per distinct `manufacturer` + `model` pair, not once per row, so the cost depends on how many different models there are. `fit` only counts them, so you see the bill before paying it.
+
+```python
+from mekiki import USED_CAR, KnowledgeEncoder
+
+new_price = KnowledgeEncoder(
+    keys=["manufacturer", "model"],
+    attribute="approximate price of this model when new",
+    type="numeric", unit="USD", range=(3_000, 500_000),
+    domain=USED_CAR, name="new_price",
+)
+new_price.fit(df)
+new_price.cost()
+```
+
+```text
+{'n_columns': 1,
+ 'n_to_ask': 0,
+ 'n_requests': 0,
+ 'cost_per_key_usd': 0.001855,
+ 'estimated_total': 0.0,
+ 'proposal_cost_usd': 0.0,
+ 'actual_cost_usd': 0.0,
+ 'per_column': [{'column': 'new_price',
+   'n_rows': 412,
+   'n_key_values': 296,
+   'skipped_below_min_count': 0,
+   'known': 296,
+   'n_to_ask': 0,
+   'estimated_total': 0.0}]}
+```
+
+296 distinct models, 15 requests, about **$0.55**, and it would be the same for 416,000 rows of the same models. Nothing has been spent yet. `fit_transform` makes the calls and returns the new column as a DataFrame to join:
+
+```python
+df = df.join(new_price.fit_transform(df))
+df[["year", "manufacturer", "model", "price", "new_price"]].head()
+```
+
+|  | year | manufacturer | model | price | new_price |
+|---|---|---|---|---|---|
+| 0 | 2014.0 | gmc | sierra 1500 crew cab slt | 33590 | 48000.0 |
+| 1 | 2010.0 | chevrolet | silverado 1500 | 22590 | 38000.0 |
+| 2 | 2020.0 | chevrolet | silverado 1500 crew | 39590 | 44000.0 |
+| 3 | 2017.0 | toyota | tundra double cab sr | 30990 | 35000.0 |
+| 4 | 2013.0 | ford | f-150 xlt | 15000 | 38000.0 |
+
+`new_price` did not exist a moment ago. Every value in it carries its provenance: where it came from, how sure the LLM was, and its reason.
+
+```python
+print(new_price.explain(0))
+```
+
+```text
+column            new_price
+value             48000.0
+confidence        0.600
+source            llm
+strategy          knowledge_lookup (manufacturer, model -> approximate price of this model when new)
+key               gmc | sierra 1500 crew cab slt
+reason            Crew cab SLT 4x4 typically mid-to-high $40Ks.
+cost              $0.00000
+```
+
+The LLM is allowed to answer "I don't know", and did for 6 of the 296 models; those rows stay missing instead of getting a made-up number. `new_price.status()` has the counts.
+
+### Dealer or private seller? — [`SemanticEncoder`](/api/columns/semantic-encoder)
+
+This information is **inside the table, but buried in free text**: sellers do not tick a box, they write "we finance, call our sales team" or "selling my truck, garage kept". [`SemanticEncoder`](/api/columns/semantic-encoder) turns the `description` into a typed column. You declare the possible values; it embeds each text, classifies it by similarity, and sends only the rows it is least sure about (here the bottom 10%) to the LLM.
+
+```python
+from mekiki import SemanticEncoder
+from mekiki.fallback import LLMFallback
+
+seller = SemanticEncoder(
+    source="description", values=["dealer", "private seller"],
+    escalate_rate=0.1, fallback=LLMFallback(), name="seller",
+)
+df["seller"] = seller.fit_transform(df)
+df["seller"].value_counts()
+```
+
+```text
+seller
+dealer            381
+private seller     35
+Name: count, dtype: int64
+```
+
+```python
+seller.status()
+```
+
+```text
+{'feature': 'seller',
+ 'n_records': 416,
+ 'references_human': 0,
+ 'references_value_names': 2,
+ 'model_answered': 374,
+ 'jev_answered': 0,
+ 'llm_answered': 42,
+ 'pending_review': 0,
+ 'vectorizer': 'char_tfidf_svd256',
+ 'k': 1,
+ 'threshold': 'bottom 10%'}
+```
+
+The classifier answered 374 rows for free, and the 42 it was least sure about went to the LLM ($0.28 on a first run). The LLM's answers are not taken on faith: each one is queued for review together with its reason.
+
+```python
+seller.review_queue()[["text", "llm_answer", "confidence", "reason"]].head()
+```
+
+|  | text | llm_answer | confidence | reason |
+|---|---|---|---|---|
+| 0 | Selling my 2019 Toyota Tacoma TRD Off Road Dou... | private seller | 0.97 | Text is written by an individual one-owner sel... |
+| 1 | Diesel engine Mercedes e class. 7 speed auto t... | private seller | 0.95 | First-person ownership history, personal phone... |
+| 2 | 2002 FORD THUNDERBIRD DELUXE IN INSPIRATION YE... | private seller | 0.90 | First-person personal ownership details (garag... |
+| 3 | Great work truck No lowballers Clean and clear... | private seller | 0.92 | Informal listing language like 'no lowballers'... |
+| 4 | This sky blue Toyota Echo has an excellent Car... | dealer | 0.72 | The seller describes an ongoing inventory of u... |
+
+`seller.explain(i)` shows the same record for any single row: the value, its confidence, who decided (the classifier or the LLM), and what it cost.
+
+## 4. Predict the price
+
+You declare three things to [`EvidencePredictor`](/api/prediction/evidence-predictor): the target, how each column is treated (numeric, categorical, short text, free text), and a [`Domain`](/api/prediction/domain) for the field. `fit` only trains the statistical models and `plan` only estimates; the LLM is not billed until `predict`.
+
+Here it takes the table, the two new columns included. It trains LightGBM, XGBoost and a nearest-neighbour index. `escalate_rate=0.3` means: of every 100 rows, the 30 on which the two tree models disagree most go to the LLM, and the other 70 get LightGBM's answer.
+
+```python
+from sklearn.model_selection import train_test_split
+from mekiki import EvidenceRegressor
+
+train, test = train_test_split(df, test_size=60, random_state=0)
+train, test = train.reset_index(drop=True), test.reset_index(drop=True)
+
+model = EvidenceRegressor(
+    target="price", unit="USD", domain=USED_CAR,
+    numeric=["year", "odometer", "new_price"],
+    categorical=["manufacturer", "fuel", "transmission", "drive", "type", "seller"],
+    text="model", long_text="description",
+    escalate_rate=0.3,
+)
+model.fit(train)
+model.plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'top 30% by signal',
+ 'n_escalated': 18,
+ 'n_skipped_approved': 0,
+ 'n_fast_path': 42,
+ 'estimated_cost_usd': 0.1548,
+ 'estimated_seconds': 37.6,
+ 'cost_per_row_usd': 0.0086}
+```
+
+`fit` trained the statistical models. `plan` ran them on the test rows and reports what `predict` would do, without calling the LLM: **18 rows to the LLM, about $0.15, about 38 seconds.** `predict` is the step that pays:
+
+```python
+pred = model.predict(test)
+print(model.report())
+```
+
+```text
+60 rows predicted (signal: disagreement / top 30% by signal)
+  sent to LLM:          18 rows (30.0%)
+  skipped (approved):   0 rows
+  statistical models:   42 rows
+  cost:                 $0.0000 (estimated $0.5160 if every row were sent)
+  estimated time:       37.6 s
+```
+
+Did the LLM help? Each row keeps LightGBM's own prediction as evidence, so the two can be compared on the same rows (mean absolute error, USD):
+
+```python
+truth = test["price"]
+lgbm = model.provenance()["evidence_LightGBM"]
+error = pd.DataFrame({"mekiki": (pred - truth).abs(), "LightGBM alone": (lgbm - truth).abs()})
+
+sent = model.route()["route"] == "llm"
+table = error.groupby(sent.map({True: "sent to the LLM", False: "kept on the fast path"})).mean()
+table.loc["all rows"] = error.mean()
+table.round(0)
+```
+
+```text
+                       mekiki  LightGBM alone
+route                                        
+kept on the fast path  3281.0          3281.0
+sent to the LLM        5316.0          8315.0
+all rows               3891.0          4791.0
+```
+
+The 42 rows that were not sent are unchanged. On the 18 rows where the tree models disagreed, the LLM cut the error from $8,315 to $5,316, which lowers the overall error by 19% for $0.21. LLM answers are not deterministic and 60 rows is a small test set: read the direction, not the digits.
+
+## 5. Why did this row get this answer?
+
+```python
+print(model.explain(3))
+```
+
+```text
+[row 3] prediction 52,000 USD (source llm / confidence 0.50)
+route LLM / signal 31,163 (escalation rule: top 30% by signal)
+
+Statistical model predictions:
+  - LightGBM: 56,277.3
+  - XGBoost: 87,440.3
+  - 5-NN median: 19,900
+
+Similar cases consulted:
+  1. price 15,277 (similarity 0.229)
+      - year: 2,017
+      - odometer: 94,893
+      - new_price: 22,000
+      - manufacturer: mini
+      - fuel: gas
+      - transmission: manual
+      - drive: fwd
+      - type: unknown
+      - seller: dealer
+      - model: cooper
+  2. price 35,590 (similarity 0.152)
+      - year: 2,010
+      - odometer: 31,879
+      - new_price: 67,000
+      - manufacturer: chevrolet
+      - fuel: gas
+      - transmission: other
+      - drive: rwd
+      - type: other
+      - seller: dealer
+      - model: corvette convertible
+  3. price 19,900 (similarity 0.051)
+      - year: 2,004
+      - odometer: 88,000
+      - new_price: 45,000
+      - manufacturer: ford
+      - fuel: diesel
+      - transmission: automatic
+      - drive: 4wd
+      - type: pickup
+      - seller: dealer
+      - model: f250 super duty
+  4. price 16,950 (similarity 0.051)
+      - year: 2,007
+      - odometer: 156,792
+      - new_price: 33,000
+      - manufacturer: toyota
+      - fuel: gas
+      - transmission: automatic
+      - drive: rwd
+      - type: truck
+      - seller: dealer
+      - model: tacoma double cab
+  5. price 29,990 (similarity 0.044)
+      - year: 2,014
+      - odometer: 26,129
+      - new_price: 40,000
+      - manufacturer: chevrolet
+      - fuel: gas
+      - transmission: other
+      - drive: 4wd
+      - type: pickup
+      - seller: dealer
+      - model: silverado 1500 double
+
+LLM reason: Low-mileage stock Gen2 Viper RT/10 commands collector pricing well above the weak similar cases (none are Vipers); I lean on the LightGBM/XGBoost range, slightly below their midpoint given market values around $45-60k.
+```
+
+Everything the LLM was given is in this one record. The tree models were far apart ($56,277 and $87,440), which is why the row was escalated. The similar cases were weak, and the LLM says so: none of them is a Dodge Viper, which it recognised from the listing. It answered $52,000 and reported a confidence of only 0.50. The car was listed at $39,995: closer than either tree model, and still not close.
+
+## 6. Approve the answers, and the next run gets cheaper
+
+```python
+model.approve()
+```
+
+```text
+18
+```
+
+```python
+model.plan(test)
+```
+
+```text
+{'n_rows': 60,
+ 'signal': 'disagreement',
+ 'escalation_rule': 'top 30% by signal',
+ 'n_escalated': 0,
+ 'n_skipped_approved': 18,
+ 'n_fast_path': 42,
+ 'estimated_cost_usd': 0.0,
+ 'estimated_seconds': 23.9,
+ 'cost_per_row_usd': 0.0086}
+```
+
+`approve()` promotes the 18 LLM answers to labelled examples, and `plan` now reports **0 rows to escalate**: those cars are answered from the approved examples, and the LLM budget goes to rows nobody has looked at yet. This is the loop at the centre of the library. Statistical models answer what they can, the LLM answers what they cannot, and every answer you approve widens the free path.
+
+## Using it on your own table
+
+The flow stays the same. Only the declarations change.
+
+- **Target and columns.** `target`, `unit` and the column lists. Instead of writing the lists by hand, you can pass the `rec.spec` that [`diagnose`](/api/inspection/diagnose) returns as `spec=`.
+- **The field.** Replace `USED_CAR` with your own `Domain(role=..., subject=...)`. It tells the LLM who it is and what one record is. With an API key, `diagnose(..., llm=True)` drafts one.
+- **Columns to add.** The keys and attribute of a [`KnowledgeEncoder`](/api/columns/knowledge-encoder); the source column and values of a [`SemanticEncoder`](/api/columns/semantic-encoder). If you do not know what to add, [`diagnose`](/api/inspection/diagnose) proposes candidates for these too.
+- **Share of rows sent to the LLM.** `escalate_rate=0.3` is a starting point. Choose it from `model.curve(test)` on a small test set.
+- **Classification.** Use [`EvidenceClassifier`](/api/prediction/evidence-classifier). `predict` returns labels and `predict_proba` probabilities.
+
+## Where to go next
+
+One notebook per part, each ending with how to plug in your own pieces:
+
+- [`diagnose.ipynb`](/tutorials/diagnose): start from a table nobody has cleaned. With an API key it also proposes a [`Domain`](/api/prediction/domain) and new columns. It covers `screen()`, the free check of whether a text column is worth sending to an LLM at all.
+- [`knowledge_encoder.ipynb`](/tutorials/knowledge_encoder): let the LLM propose the columns itself, and keep only those that improve the prediction.
+- [`semantic_encoder.ipynb`](/tutorials/semantic_encoder): a column from free text, as the prediction itself or as a new feature; your own vectorizer and fallback.
+- [`evidence_predictor.ipynb`](/tutorials/evidence_predictor): which rows to send and how many (`model.curve(test)`), classification, your own model and routing rule.
+
+Another provider: `LLMClient(model="openai/gpt-5")` with that provider's key. See the [README](https://github.com/attuan/mekiki#readme).

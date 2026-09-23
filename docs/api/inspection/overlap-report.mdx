@@ -1,0 +1,43 @@
+---
+title: "OverlapReport"
+description: "Duplicates straddling train and test. This is the actual harm."
+---
+
+
+```python
+from mekiki import OverlapReport
+```
+
+```python
+OverlapReport(
+    n_train: int,
+    n_test: int,
+    n_leaked_rows: int,
+    columns: list[str] = <factory>,
+    examples: list[int] = <factory>,
+)
+```
+
+Duplicates straddling train and test. **This is the actual harm.**
+
+## Fields
+
+<ParamField path="n_train" type="int">
+  required
+</ParamField>
+
+<ParamField path="n_test" type="int">
+  required
+</ParamField>
+
+<ParamField path="n_leaked_rows" type="int">
+  required
+</ParamField>
+
+<ParamField path="columns" type="list[str]">
+  default: empty
+</ParamField>
+
+<ParamField path="examples" type="list[int]">
+  default: empty
+</ParamField>

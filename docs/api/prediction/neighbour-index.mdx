@@ -1,0 +1,63 @@
+---
+title: "NeighbourIndex"
+description: "Index for retrieving \"similar cases whose answer is known\"."
+---
+
+
+```python
+from mekiki import NeighbourIndex
+```
+
+```python
+NeighbourIndex(
+    spec: ColumnSpec,
+    k: int = 5,
+    w: float = 0.15,
+    vectorizer: Vectorizer | None = None,
+)
+```
+
+Index for retrieving "similar cases whose answer is known".
+
+similarity = cosine similarity of the text - w * mean standardised distance of the
+numeric columns. The subtraction follows our measurements: by meaning alone,
+records with very different numeric attributes (e.g. cars of a different year and
+mileage) come out as "similar".
+
+The default w = 0.15 was chosen by the same measurements.
+
+## Fields
+
+<ParamField path="spec" type="mekiki.predictor.ColumnSpec">
+  required
+</ParamField>
+
+<ParamField path="k" type="int">
+  default `5`
+</ParamField>
+
+<ParamField path="w" type="float">
+  default `0.15`
+</ParamField>
+
+<ParamField path="vectorizer" type="mekiki.vectorizers.Vectorizer | None">
+  default `None`
+</ParamField>
+
+
+## Methods
+
+### `fit`
+
+```python
+fit(train: pd.DataFrame, y: np.ndarray) -> NeighbourIndex
+```
+
+### `query`
+
+```python
+query(test: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
+```
+
+For each row, the indices of the closest training rows and their similarity.
+Shape (n_test, k).

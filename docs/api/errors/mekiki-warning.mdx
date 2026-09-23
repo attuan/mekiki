@@ -1,0 +1,16 @@
+---
+title: "MekikiWarning"
+description: "Not serious enough to stop, but proceeding silently would mislead the reader."
+---
+
+
+```python
+from mekiki import MekikiWarning
+```
+
+Not serious enough to stop, but proceeding silently would mislead the reader.
+
+Duplicate-record detection (`mekiki.leakage`) uses this. **It is not an
+exception because duplicates are sometimes intentional, and stopping would
+make "just run it for now" impossible.** The point is to be noticed; it can
+be switched off with `check_leakage=False`.

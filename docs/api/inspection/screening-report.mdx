@@ -1,0 +1,88 @@
+---
+title: "ScreeningReport"
+description: "The result of screen(). Printing it gives a readable summary."
+---
+
+
+```python
+from mekiki import ScreeningReport
+```
+
+```python
+ScreeningReport(
+    n_rows: int,
+    unit: str,
+    score_without_text: float,
+    score_with_text: float,
+    text_contribution: float,
+    threshold: float,
+    text_column: str,
+    n_unique_text: int,
+    verdict: str,
+    max_text_chars: int = 0,
+    mean_text_chars: float = 0.0,
+    metric: str = 'MAE',
+    target_name: str = 'target',
+    task: str = 'regression',
+)
+```
+
+The result of `screen()`. Printing it gives a readable summary.
+
+## Fields
+
+<ParamField path="n_rows" type="int">
+  required
+</ParamField>
+
+<ParamField path="unit" type="str">
+  required
+</ParamField>
+
+<ParamField path="score_without_text" type="float">
+  required
+</ParamField>
+
+<ParamField path="score_with_text" type="float">
+  required
+</ParamField>
+
+<ParamField path="text_contribution" type="float">
+  required
+</ParamField>
+
+<ParamField path="threshold" type="float">
+  required
+</ParamField>
+
+<ParamField path="text_column" type="str">
+  required
+</ParamField>
+
+<ParamField path="n_unique_text" type="int">
+  required
+</ParamField>
+
+<ParamField path="verdict" type="str">
+  required
+</ParamField>
+
+<ParamField path="max_text_chars" type="int">
+  default `0`
+</ParamField>
+
+<ParamField path="mean_text_chars" type="float">
+  default `0.0`
+</ParamField>
+
+<ParamField path="metric" type="str">
+  default `'MAE'`
+</ParamField>
+
+<ParamField path="target_name" type="str">
+  default `'target'`
+</ParamField>
+
+<ParamField path="task" type="str">
+  default `'regression'`
+</ParamField>

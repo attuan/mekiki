@@ -1,0 +1,52 @@
+---
+title: "JevFallback"
+description: "Fallback that asks Jev (TypeSafe AI's System One model) one choice question per row."
+---
+
+
+```python
+from mekiki import JevFallback
+```
+
+```python
+JevFallback(
+    client=None,
+    threshold: float = 0.7,
+    cost_per_call: float | None = None,
+)
+```
+
+Fallback that asks Jev (TypeSafe AI's System One model) one `choice` question per row.
+
+Same shape as [`LLMFallback`](/api/columns/llm-fallback), so it drops into `SemanticEncoder(fallback=...)` on its own
+or as the first stage of a chain (`fallback=[JevFallback(), LLMFallback()]`). Jev sees
+the same evidence the LLM would: the text and the nearest labelled examples, as a JSON
+state. Its answer comes with a calibrated confidence; rows below `threshold` are
+handed on to the next stage (or queued for review when there is none).
+
+Everything it accepts is queued as a labeling candidate, like the LLM's answers.
+
+## Methods
+
+### `answer`
+
+```python
+answer(texts: list[str], values: list[str] | None, context: list[dict]) -> list[Answer]
+```
+
+### `can_answer`
+
+```python
+can_answer() -> bool
+```
+
+### `enqueue`
+
+```python
+enqueue(
+    row: int,
+    text: str,
+    guess: str | None,
+    confidence: float,
+) -> None
+```

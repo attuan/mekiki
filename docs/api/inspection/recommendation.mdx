@@ -1,0 +1,64 @@
+---
+title: "Recommendation"
+description: "The answer of diagnose. spec and domain can be passed straight to EvidencePredictor."
+---
+
+
+```python
+from mekiki import Recommendation
+```
+
+```python
+Recommendation(
+    task: str,
+    spec: ColumnSpec,
+    domain: Domain,
+    unit: str = '',
+    target: str = '',
+    target_transform: str | None = None,
+    clip_outliers: bool = False,
+    dedup_ignore: list[str] = <factory>,
+    typed_columns: list[dict[str, Any]] = <factory>,
+    knowledge_columns: list[dict[str, Any]] = <factory>,
+    use_evidence: bool = True,
+    escalate_rate: float | None = 0.3,
+    warnings: list[str] = <factory>,
+    reasons: dict[str, str] = <factory>,
+    source: str = 'rule',
+    diagnosis: Diagnosis | None = None,
+    cost: dict[str, Any] = <factory>,
+)
+```
+
+The answer of [`diagnose`](/api/inspection/diagnose). `spec` and `domain` can be passed straight to
+[`EvidencePredictor`](/api/prediction/evidence-predictor).
+
+<ParamField path="source" type="str">
+  "rule" if built from the diagnosis table by rules alone. "llm" if the LLM built it
+  after reading the column meanings. When the LLM fails it falls back to "rule" and
+  `warnings` says so
+</ParamField>
+
+<ParamField path="reasons" type="dict[str, str]">
+  Grounds for each recommendation: which numbers of the diagnosis table it came from.
+  LLM recommendations always carry this
+</ParamField>
+
+<ParamField path="typed_columns, knowledge_columns">
+  Candidate columns, not yet built. `typed_columns` are [`SemanticEncoder`](/api/columns/semantic-encoder) candidates
+  extracted from the free text (name / source / type / values / why).
+  `knowledge_columns` are [`KnowledgeEncoder`](/api/columns/knowledge-encoder) candidates supplied from general knowledge,
+  keyed by structured columns (name / keys / attribute / type / values / unit / why).
+  Both appear in `to_code()` as commented-out lines, because building them costs LLM
+  calls and whether they help is only known after scoring
+</ParamField>
+
+## Methods
+
+### `to_code`
+
+```python
+to_code() -> str
+```
+
+Python that reproduces the recommended configuration. Runs as is when pasted.

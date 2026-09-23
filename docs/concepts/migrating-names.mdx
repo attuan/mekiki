@@ -1,0 +1,22 @@
+---
+title: "Migrating names"
+description: "Former names of classes that still work as aliases, and the names to use instead."
+---
+
+import Aliases from '/snippets/aliases.mdx';
+
+Several classes have been renamed so that the name says what the object does: an *encoder*
+turns a column into features, a *vectorizer* turns text into vectors, and a *fallback* is
+what a low-confidence row falls back to. The former names are kept importable so that
+existing code keeps working, and they refer to the very same classes, so `isinstance`
+checks and pickles are unaffected. New code should use the names on the right.
+
+<Aliases />
+
+Nothing else changes: constructor arguments, methods and behaviour are identical under both
+names. A find-and-replace of the left column by the right column is the whole migration.
+
+The `client=` argument of [`EvidencePredictor`](/api/prediction/evidence-predictor),
+[`KnowledgeEncoder`](/api/columns/knowledge-encoder) and
+[`diagnose()`](/api/inspection/diagnose) is still annotated as `ClaudeClient` in places;
+pass an [`LLMClient`](/api/clients/llm-client), which is the same class.

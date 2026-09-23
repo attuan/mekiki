@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 120" width="680" height="120" role="img" aria-label="mekiki">
+<path d="M16.0 60 Q66 16.0 116.0 60 Q66 104.0 16.0 60 Z" fill="none" stroke="#4a93ea" stroke-width="6.0" stroke-linejoin="round"/><circle cx="66" cy="60" r="21.0" fill="#4a93ea"/><rect x="56.5" y="50.5" width="8.0" height="8.0" rx="2.0" fill="#0d1117"/><rect x="67.5" y="50.5" width="8.0" height="8.0" rx="2.0" fill="#0d1117"/><rect x="56.5" y="61.5" width="8.0" height="8.0" rx="2.0" fill="#0d1117"/><rect x="67.5" y="61.5" width="8.0" height="8.0" rx="2.0" fill="#f0834f"/>
+<text x="140" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5" fill="#f0f6fc">mekiki</text>
+<text x="143" y="100" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" fill="#9198a1">目利き · a trained eye for the columns your model cannot read</text>
+</svg>

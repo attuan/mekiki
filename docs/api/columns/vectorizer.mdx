@@ -1,0 +1,31 @@
+---
+title: "Vectorizer"
+description: "Text series -> vectors. Same fit / transform shape as scikit-learn."
+---
+
+
+```python
+from mekiki import Vectorizer
+```
+
+*Protocol.* Anything with these members plugs in; there is nothing to subclass.
+
+Text series -> vectors. Same fit / transform shape as scikit-learn.
+
+## Members
+
+<ParamField path="name" type="str">
+  Attribute.
+</ParamField>
+
+### `fit`
+
+```python
+fit(texts: pd.Series) -> Vectorizer
+```
+
+### `transform`
+
+```python
+transform(texts: pd.Series) -> np.ndarray
+```

@@ -1,0 +1,97 @@
+---
+title: "Installation"
+description: "Python 3.12 or later, the optional extras, and where the API key goes."
+---
+
+Python 3.12 or later. The only required dependencies are pandas, numpy and scikit-learn;
+everything else is an extra.
+
+<CodeGroup>
+
+```bash pip
+pip install "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+```
+
+```bash uv
+uv add "mekiki[models,llm] @ git+https://github.com/attuan/mekiki"
+```
+
+</CodeGroup>
+
+`models` and `llm` are the two extras the tutorials use. The full list:
+
+| extra | installs | needed for |
+|---|---|---|
+| `models` | lightgbm, xgboost | `EvidencePredictor`, confidence routing, `screen()`, `diagnose()` scoring |
+| `llm` | anthropic | actually calling the LLM (import works without it) |
+| `litellm` | litellm | calling a provider other than Claude (`openai/...`, `gemini/...`, ...) |
+| `embed` | sentence-transformers (pulls in torch) | stronger embeddings than the default character TF-IDF |
+| `all` | all four above | |
+| `dev` | pytest | development |
+
+On macOS, xgboost and lightgbm need `brew install libomp`.
+
+## API key
+
+Only needed when the LLM is actually called. Keys are read from the environment, or from
+a `.env` file found by walking up from the current directory.
+
+```text .env
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+Keys are issued at https://console.anthropic.com/settings/keys. Without a key everything
+still imports and runs: [`LLMClient.available()`](/api/clients/llm-client) returns `False`,
+[`SemanticEncoder`](/api/columns/semantic-encoder) keeps going with the queue-only fallback,
+and [`diagnose()`](/api/inspection/diagnose) returns its rule-based recommendation.
+
+### Other providers
+
+Claude is the default. To use another provider, install the `litellm` extra, put that
+provider's key in the same `.env` under the name LiteLLM expects (`OPENAI_API_KEY`,
+`GEMINI_API_KEY`, ...), and pass the model with its provider prefix:
+
+```python
+from mekiki import LLMClient, EvidenceRegressor
+
+client = LLMClient(model="openai/gpt-5")          # or "gemini/gemini-2.5-pro", "ollama/..."
+print(client.why_unavailable())                   # None when the key is in place
+model = EvidenceRegressor(client=client, target="price", unit="USD")
+```
+
+Claude models (`claude-...`) always go through the official Anthropic SDK, everything
+else through LiteLLM. See [Providers and tiers](/concepts/providers-and-tiers) for why.
+
+## Bundled data
+
+Three 500-row excerpts ship with the package so the tutorials run with no download. Each is
+a random sample of a public dataset whose license permits redistribution; column names and
+values are left exactly as the source has them.
+
+```python
+from mekiki.paths import sample_data
+
+sample_data("vehicles_sample500.csv")   # Craigslist used-car listings (CC0 1.0)
+sample_data("news_sample500.csv")       # online news headlines, topic, share count (CC BY 4.0)
+sample_data("bank_sample500.csv")       # a bank's term-deposit campaign, no text column (CC BY 4.0)
+```
+
+## Development install
+
+Clone and install in editable mode. With [uv](https://docs.astral.sh/uv/), which fetches
+Python 3.12 itself:
+
+```bash
+git clone git@github.com:attuan/mekiki.git && cd mekiki
+uv venv --python 3.12
+uv pip install -e ".[all,dev]"
+.venv/bin/python -m pytest tests -q    # the LLM is stubbed; everything passes without an API key
+```
+
+Or with pip:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -e ".[all,dev]"
+.venv/bin/python -m pytest tests -q
+```

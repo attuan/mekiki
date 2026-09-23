@@ -1,0 +1,36 @@
+---
+title: "SentenceTransformerVectorizer"
+description: "Uses a sentence-transformers model (requires torch)."
+---
+
+
+```python
+from mekiki import SentenceTransformerVectorizer
+```
+
+```python
+SentenceTransformerVectorizer(
+    model_name: str = 'intfloat/multilingual-e5-small',
+    prefix: str = 'query: ',
+    max_seq_length: int = 128,
+    batch_size: int = 64,
+)
+```
+
+Uses a sentence-transformers model (requires torch).
+
+torch is not a required dependency; install it with `pip install "mekiki[embed]"`.
+
+## Methods
+
+### `fit`
+
+```python
+fit(texts: pd.Series) -> SentenceTransformerVectorizer
+```
+
+### `transform`
+
+```python
+transform(texts: pd.Series) -> np.ndarray
+```

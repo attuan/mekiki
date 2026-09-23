@@ -1,0 +1,84 @@
+---
+title: "ColumnSpec"
+description: "Which column is treated how. Swapping datasets only requires rewriting this."
+---
+
+
+```python
+from mekiki import ColumnSpec
+```
+
+```python
+ColumnSpec(
+    numeric: list[str] = <factory>,
+    boolean: list[str] = <factory>,
+    categorical: list[str] = <factory>,
+    text: str | None = None,
+    long_text: str | None = None,
+    long_text_chars: int = 2000,
+    long_text_example_chars: int = 0,
+    mask_amounts_in_long_text: bool | None = None,
+)
+```
+
+Which column is treated how. Swapping datasets only requires rewriting this.
+
+`text` and `long_text` are separate because **their length is handled differently**.
+
+- `text` ... short text (a product name, a list of features). It feeds the
+  neighbour search and is shown in full for both the target row and the similar cases.
+- `long_text` ... free-text body (a listing's `description` in the Craigslist used-car
+  data: median 1,075 chars, max 28,832). **Pasting five cases in full inflates the prompt by an order of
+  magnitude**, so the target row and the similar cases get separate limits. By default
+  it is not shown for similar cases (`long_text_example_chars=0`).
+
+This split is what lets long free text be used at all.
+
+## Fields
+
+<ParamField path="numeric" type="list[str]">
+  default: empty
+</ParamField>
+
+<ParamField path="boolean" type="list[str]">
+  default: empty
+</ParamField>
+
+<ParamField path="categorical" type="list[str]">
+  default: empty
+</ParamField>
+
+<ParamField path="text" type="str | None">
+  default `None`
+</ParamField>
+
+<ParamField path="long_text" type="str | None">
+  default `None`
+</ParamField>
+
+<ParamField path="long_text_chars" type="int">
+  default `2000`
+</ParamField>
+
+<ParamField path="long_text_example_chars" type="int">
+  default `0`
+</ParamField>
+
+<ParamField path="mask_amounts_in_long_text" type="bool | None">
+  default `None`
+</ParamField>
+
+
+## Methods
+
+### `all_columns`
+
+```python
+all_columns() -> list[str]
+```
+
+### `check`
+
+```python
+check(df: pd.DataFrame) -> None
+```

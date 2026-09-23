@@ -1,0 +1,256 @@
+---
+title: "KnowledgeEncoder"
+description: "Adds columns the table lacks, from the LLM's world knowledge."
+---
+
+
+```python
+from mekiki import KnowledgeEncoder
+```
+
+```python
+KnowledgeEncoder(
+    keys: str | list[str] | None = None,
+    attribute: str | None = None,
+    *,
+    type: str | None = None,
+    values: list[str] | None = None,
+    unit: str = '',
+    range: tuple[float, float] | None = None,
+    target: str | None = None,
+    task: str | None = None,
+    domain: Domain | None = None,
+    client: ClaudeClient | None = None,
+    jev: JevClient | bool | None = None,
+    threshold: float | None = None,
+    min_count: int = 1,
+    batch_size: int = 20,
+    check_against: str | None = None,
+    max_columns: int = 5,
+    sample: int | None = 5000,
+    n_splits: int = 3,
+    cache_dir: str | Path | None = 'default',
+    name: str | None = None,
+)
+```
+
+Adds columns the table lacks, from the LLM's world knowledge.
+
+Put a table (DataFrame) in and get back the columns it lacked (a DataFrame with zero to a
+few columns). Add them to the original table with `df.join(...)`. What to look up may be
+specified, or left unspecified.
+
+<ParamField path="keys" type="str | list[str] | None">
+  Which columns to use as the key. If omitted, the LLM picks from the column list.
+</ParamField>
+
+<ParamField path="attribute" type="str | None">
+  What to find out (natural language). If omitted, the LLM proposes up to
+  `max_columns` attributes.
+</ParamField>
+
+<ParamField path="type, values, unit, range">
+  Answer type ("category" / "binary" / "numeric"), possible values, unit, plausible range.
+  category / binary require values. If omitted, the LLM decides.
+</ParamField>
+
+<ParamField path="target" type="str | None">
+  Name of the target column. When given, a tree model with each column and one without
+  are compared on the same folds, and **only columns that helped are returned**
+  (scoring does not call the LLM). Without it, every column is returned.
+  In automatic mode it also tells the LLM "do not propose this".
+</ParamField>
+
+<ParamField path="task" type="str | None">
+  "regression" / "classification". If omitted, inferred from the target values.
+</ParamField>
+
+<ParamField path="domain" type="Domain | None">
+  Role and subject. Decides the "You are ..." of the prompt. None gives wording that does
+  not commit to any domain.
+</ParamField>
+
+<ParamField path="client" type="ClaudeClient | None">
+  If omitted, one is created with max_tokens matched to `batch_size`. When passing your
+  own, set max_tokens to at least `batch_size * 80` (the default 1024 cuts answers off).
+</ParamField>
+
+<ParamField path="jev" type="JevClient | bool | None">
+  The middle tier. `True` creates a [`JevClient`](/api/clients/jev-client) (key from the settings file); a
+  [`JevClient`](/api/clients/jev-client) is used as is. For category / binary lookups each unknown key value is
+  put to Jev first, and only the keys it cannot settle (below `threshold`, or
+  "unknown") go to the LLM. Numeric lookups always go to the LLM (Jev has no numeric
+  output). Omitted, or without a key: no Jev tier.
+</ParamField>
+
+<ParamField path="threshold" type="float | None">
+  Answers with confidence below this are rejected. Defaults: category / binary 0.7,
+  numeric 0.4 (for numeric "approximate" values the LLM tends to give 0.45-0.65
+  in our measurements). The check runs on every transform, so changing it does not re-ask
+  the LLM.
+</ParamField>
+
+<ParamField path="min_count" type="int">
+  Key values seen fewer times than this are not asked. Avoids spending on the long tail of
+  free-form keys (e.g. 60% appearing only once).
+</ParamField>
+
+<ParamField path="batch_size" type="int">
+  Number of key values packed into one request. Larger is cheaper but answers break more
+  easily.
+</ParamField>
+
+<ParamField path="check_against" type="str | None">
+  If the data has a column with the same attribute, its name. The agreement rate is
+  computed on non-missing rows (only when a single column is specified).
+</ParamField>
+
+<ParamField path="max_columns" type="int">
+  Upper limit on the number of columns proposed in automatic mode.
+</ParamField>
+
+<ParamField path="sample, n_splits">
+  Row cap and number of folds for scoring (with `target`).
+</ParamField>
+
+<ParamField path="cache_dir" type="str | Path | None">
+  Where key value -> answer is persisted. "default" means
+  `sampledata/processed/knowledge_cache/` inside the repository; None disables
+  persistence (the `ClaudeClient` cache still applies separately).
+</ParamField>
+
+<ParamField path="name" type="str | None">
+  Output column name when a single column is specified. Default `<keys>_knowledge`.
+</ParamField>
+
+## Methods
+
+### `columns`
+
+```python
+columns() -> list[dict[str, Any]]
+```
+
+The columns to create (or created): what is asked, keyed by what, and why the LLM proposed it.
+
+### `cost`
+
+```python
+cost(X: pd.DataFrame | None = None) -> dict
+```
+
+Cost estimate. Can be called after fit alone, **before filling with the LLM**.
+
+With X, the key values of that data are counted afresh (no transform).
+The unit cost is derived from approximate token counts and is meant to be replaced
+by measurements.
+
+### `cost_per_key`
+
+```python
+cost_per_key() -> float
+```
+
+Approximate USD per key value (from batch_size and the price table).
+
+### `explain`
+
+```python
+explain(i: int, column: str | None = None) -> str
+```
+
+Human-readable provenance of one row. With several columns, `column` picks one (default: first).
+
+### `fit`
+
+```python
+fit(X: pd.DataFrame, y=None) -> KnowledgeEncoder
+```
+
+Decide what to look up and count the occurrences of key values.
+
+If everything is specified, the LLM is not called. If something is omitted, the LLM is
+asked once for candidates (`proposal_cost_`). The LLM calls that fill the values happen
+in transform.
+
+<ParamField path="X">
+  A table containing the key columns (and `target` / `check_against` if declared).
+</ParamField>
+
+<ParamField path="y">
+  Target values, as an alternative to a `target` column in X.
+</ParamField>
+
+**Returns**
+
+`self`. `cost(X)` then gives the estimate before anything is spent.
+
+### `fit_transform`
+
+```python
+fit_transform(X: pd.DataFrame, y=None) -> pd.DataFrame
+```
+
+`fit(X, y)` followed by `transform(X, y)`. Returns what `transform` returns.
+
+### `review_queue`
+
+```python
+review_queue(column: str | None = None) -> pd.DataFrame
+```
+
+Key values a person should look at: answered "unknown" or rejected. Most frequent first.
+
+### `status`
+
+```python
+status() -> dict
+```
+
+Summary of the last `transform`: what was asked, what was accepted, what it cost.
+
+**Returns**
+
+A dict with `n_records`, `n_columns`, `returned_columns`, `proposal_cost_usd`,
+`actual_cost_usd`, `per_column` and, if there were any, `warnings`. `per_column` has one
+dict per column: its declaration, the number of distinct key values (`n_key_values`),
+how their answers ended up (`accepted_llm`, `accepted_jev`, `unknown`, `rejected`,
+`errors`, `skipped`),
+`n_rows_filled`, `threshold`, `actual_cost_usd`, and `agreement` / `score` when
+`check_against` / a target was given.
+
+### `transform`
+
+```python
+transform(X: pd.DataFrame, y=None) -> pd.DataFrame
+```
+
+Look up the key values of X and return the new columns. **X itself is not modified.**
+
+**This is the step that calls the LLM**, once per distinct key value not yet in the
+disk cache. With everything cached it is free and needs no API key.
+
+<ParamField path="X">
+  A table containing the key columns.
+</ParamField>
+
+<ParamField path="y">
+  Target values, as an alternative to a `target` column in X. Only used for scoring.
+</ParamField>
+
+**Returns**
+
+A `pd.DataFrame` holding only the new columns, carrying the index of X, to join onto
+the table (`df.join(kc.transform(df))`). It is a DataFrame even for a single column.
+Rows where the LLM declined, or whose answer was rejected, are missing. When a target
+is given, each column is scored and only the ones that helped are returned (`scores_`
+has them all).
+
+The per-row record is kept in `provenance_` and replaced on every call.
+
+
+## Attributes
+
+<ParamField path="manual">
+  Whether a person has decided everything: what, keyed by what, and of which type.
+</ParamField>

@@ -1,0 +1,39 @@
+---
+title: "CharTfidfVectorizer"
+description: "Default vectorizer: TF-IDF of character n-grams compressed with SVD."
+---
+
+
+```python
+from mekiki import CharTfidfVectorizer
+```
+
+```python
+CharTfidfVectorizer(
+    n_components: int = 256,
+    ngram_range: tuple[int, int] = (2, 4),
+    min_df: int = 2,
+    random_state: int = 42,
+)
+```
+
+Default vectorizer: TF-IDF of character n-grams compressed with SVD.
+
+It does not split into words, so Japanese and English are handled alike,
+and `f-250 lariat` decomposes into fragments `f-2` `250` `lar` even when unseen.
+Its robustness to unseen words comes from this property
+(measured: values absent from training data 3,715 vs embedding 3,873).
+
+## Methods
+
+### `fit`
+
+```python
+fit(texts: pd.Series) -> CharTfidfVectorizer
+```
+
+### `transform`
+
+```python
+transform(texts: pd.Series) -> np.ndarray
+```

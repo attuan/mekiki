@@ -1,0 +1,74 @@
+---
+title: "TreeModel"
+description: "LightGBM / XGBoost wrapped into the BaseModel shape."
+---
+
+
+```python
+from mekiki import TreeModel
+```
+
+```python
+TreeModel(
+    name: str,
+    spec: ColumnSpec,
+    kind: str = 'lgbm',
+    params: dict = <factory>,
+    task: str = 'regression',
+)
+```
+
+LightGBM / XGBoost wrapped into the `BaseModel` shape.
+
+By default it is given the structured columns only (numeric, boolean, categorical).
+Text goes to the LLM, so it is not fed here.
+
+**Category levels are fixed on train at fit time.** Levels that only appear in test
+(a category value unseen in train) are treated as missing and the trees route them to
+the missing branch. Breaking this invalidates the "unseen value" evaluation.
+
+With `task="classification"` it becomes a classifier whose `predict_proba` returns
+(n, C). `predict` then returns the index of the most probable class.
+
+## Fields
+
+<ParamField path="name" type="str">
+  required
+</ParamField>
+
+<ParamField path="spec" type="mekiki.predictor.ColumnSpec">
+  required
+</ParamField>
+
+<ParamField path="kind" type="str">
+  default `'lgbm'`
+</ParamField>
+
+<ParamField path="params" type="dict">
+  default: empty
+</ParamField>
+
+<ParamField path="task" type="str">
+  default `'regression'`
+</ParamField>
+
+
+## Methods
+
+### `fit`
+
+```python
+fit(train: pd.DataFrame, y: np.ndarray) -> TreeModel
+```
+
+### `predict`
+
+```python
+predict(test: pd.DataFrame) -> np.ndarray
+```
+
+### `predict_proba`
+
+```python
+predict_proba(test: pd.DataFrame) -> np.ndarray
+```

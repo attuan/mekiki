@@ -1,0 +1,30 @@
+---
+title: "check_duplicates"
+description: "Count how many rows within one table have identical contents."
+---
+
+
+```python
+from mekiki import check_duplicates
+```
+
+```python
+check_duplicates(
+    df: pd.DataFrame,
+    keys: Sequence[str] | None = None,
+    ignore: Sequence[str] | None = None,
+) -> DuplicateReport
+```
+
+Count how many rows within one table have identical contents.
+
+<ParamField path="keys">
+  Columns to compare. All columns if omitted. If there is a single identifier
+  column such as a serial number or a VIN, `keys=["VIN"]` is the most accurate
+  (in the used-car data one VIN was duplicated up to 261 times).
+</ParamField>
+
+<ParamField path="ignore">
+  Columns excluded from the comparison. Put in columns whose value **differs
+  even for the same item**, such as id or region.
+</ParamField>

@@ -1,0 +1,59 @@
+---
+title: "QueueOnlyFallback"
+description: "Default implementation that never calls the LLM and only queues rows for review."
+---
+
+
+```python
+from mekiki import QueueOnlyFallback
+```
+
+```python
+QueueOnlyFallback(
+    cost_per_call: float = 0.0,
+    queued: list[dict] = <factory>,
+)
+```
+
+Default implementation that never calls the LLM and only queues rows for review.
+
+Lets [`SemanticEncoder`](/api/columns/semantic-encoder) steps 01-04 (embedding -> nearest-neighbour classification -> confidence
+check) run to the end without an API key, so that **the share of rows falling to 05**
+can be measured. That share is directly "the share of rows that need the LLM",
+i.e. the cost estimate.
+
+## Fields
+
+<ParamField path="cost_per_call" type="float">
+  default `0.0`
+</ParamField>
+
+<ParamField path="queued" type="list[dict]">
+  default: empty
+</ParamField>
+
+
+## Methods
+
+### `answer`
+
+```python
+answer(texts: list[str], values: list[str] | None, context: list[dict]) -> list[Answer]
+```
+
+### `can_answer`
+
+```python
+can_answer() -> bool
+```
+
+### `enqueue`
+
+```python
+enqueue(
+    row: int,
+    text: str,
+    guess: str | None,
+    confidence: float,
+) -> None
+```

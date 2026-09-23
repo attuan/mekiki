@@ -1,0 +1,190 @@
+---
+title: "JevClient"
+description: "A thin client that asks Jev typed questions and returns calibrated probabilities."
+---
+
+
+```python
+from mekiki import JevClient
+```
+
+```python
+JevClient(
+    model: str | None = None,
+    cache_dir: str | Path | None = 'default',
+    api_key: str | None = None,
+    base_url: str | None = None,
+    max_workers: int = 8,
+    timeout: float = 10.0,
+    max_retries: int = 2,
+    transport: Callable[[dict], dict] | None = None,
+)
+```
+
+A thin client that asks Jev typed questions and returns calibrated probabilities.
+
+<ParamField path="model">
+  Model name or alias. Default: `TYPESAFE_DEFAULT_MODEL` from the settings,
+  else `"jev-latest"` (`"typesafe-ai/jev"` when going through the Vercel AI
+  Gateway).
+</ParamField>
+
+<ParamField path="cache_dir">
+  Where answers are stored. `"default"` is the shared cache location; None
+  disables the disk cache.
+</ParamField>
+
+<ParamField path="api_key">
+  Overrides `TYPESAFE_API_KEY`. Leave unset to read `.env` or the environment:
+  `TYPESAFE_API_KEY` first, then `AI_GATEWAY_API_KEY` (the Vercel AI Gateway).
+</ParamField>
+
+<ParamField path="base_url">
+  Overrides `TYPESAFE_BASE_URL`. Default `https://api.typesafe.ai`, or
+  `https://ai-gateway.vercel.sh/typesafe` when the key is `AI_GATEWAY_API_KEY`.
+</ParamField>
+
+<ParamField path="max_workers">
+  Parallelism of `ask_many`.
+</ParamField>
+
+<ParamField path="timeout">
+  Seconds per HTTP request.
+</ParamField>
+
+<ParamField path="max_retries">
+  Retries after the first attempt on 429 / 5xx / connection errors, with a
+  short bounded backoff (the server's `retry-after` is honoured).
+</ParamField>
+
+<ParamField path="transport">
+  A function that takes the request body (a dict) and returns the decoded
+  response body (a dict). When given, no HTTP is sent and no key is needed;
+  this is how the callers are tested without a network.
+</ParamField>
+
+## Methods
+
+### `ask`
+
+```python
+ask(state: Any, questions: dict[str, dict[str, Any]]) -> JevAnswer
+```
+
+Ask one or more typed questions about one state. Returns the answers keyed
+by question name, or an error (never raises for a failed call).
+
+### `ask_many`
+
+```python
+ask_many(
+    states: Sequence[Any],
+    questions: dict[str, dict[str, Any]] | Sequence[dict[str, dict[str, Any]]],
+    progress: Callable[[int, int], None] | None = None,
+) -> list[JevAnswer]
+```
+
+Ask about several states at once. Parallel, but the results keep the input
+order. `questions` is one dict shared by every state, or one dict per state.
+
+### `available`
+
+```python
+available() -> bool
+```
+
+Whether a call can actually be made right now (False without a key).
+
+### `choose`
+
+```python
+choose(
+    state: Any,
+    options: Sequence[str],
+    instructions: str,
+    descriptions: dict[str, str] | None = None,
+) -> JevChoice
+```
+
+Pick one of `options` for one state. Returns `(choice, confidence,
+probabilities, cost)` (a `JevChoice`).
+
+### `choose_many`
+
+```python
+choose_many(
+    states: Sequence[Any],
+    options: Sequence[str] | Sequence[Sequence[str]],
+    instructions: str,
+    descriptions: dict[str, str] | Sequence[dict[str, str] | None] | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[JevChoice]
+```
+
+`choose` for several states in parallel, keeping the order.
+
+`options` is one list shared by every state, or one list per state (the
+options may differ per row, e.g. when each row's evidence has its own
+description); `descriptions` likewise.
+
+### `estimated_cost_per_call`
+
+```python
+estimated_cost_per_call(input_tokens: int = 600) -> float
+```
+
+Dollars for one call: the measured average when calls have been billed,
+otherwise `input_tokens` at the list price.
+
+### `score`
+
+```python
+score(state: Any, levels: Sequence[str], instructions: str) -> JevScore
+```
+
+Rate one state against ordered `levels`. Returns `(score, confidence,
+probabilities, cost)` (a `JevScore`); `score` is the expected level index.
+
+### `score_many`
+
+```python
+score_many(
+    states: Sequence[Any],
+    levels: Sequence[str],
+    instructions: str,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[JevScore]
+```
+
+`score` for several states in parallel, keeping the order.
+
+### `summary`
+
+```python
+summary() -> dict[str, Any]
+```
+
+### `unit_prices`
+
+```python
+unit_prices() -> tuple[float, float]
+```
+
+Input / output dollars per million tokens for this model. Unknown model
+names fall back to the default model's prices (an estimate beats none).
+
+### `why_unavailable`
+
+```python
+why_unavailable() -> str | None
+```
+
+The reason a call would fail, as a sentence telling the user what to do.
+None when everything is in place (a key, or an injected transport).
+
+
+## Attributes
+
+<ParamField path="via_gateway">
+  Whether requests go through the Vercel AI Gateway rather than TypeSafe.
+</ParamField>

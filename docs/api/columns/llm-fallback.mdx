@@ -1,0 +1,44 @@
+---
+title: "LLMFallback"
+description: "Fallback that sends rows whose confidence fell below the threshold to Claude."
+---
+
+
+```python
+from mekiki import LLMFallback
+```
+
+```python
+LLMFallback(client=None, cost_per_call: float = 0.0)
+```
+
+Fallback that sends rows whose confidence fell below the threshold to Claude.
+
+Same shape as [`QueueOnlyFallback`](/api/columns/queue-only-fallback), so it drops straight into `SemanticEncoder(fallback=...)`.
+**Everything it answers is also queued for review** as a labeling candidate. Once approved,
+the row rides the fast path next time: one half of the active-learning loop.
+
+## Methods
+
+### `answer`
+
+```python
+answer(texts: list[str], values: list[str] | None, context: list[dict]) -> list[Answer]
+```
+
+### `can_answer`
+
+```python
+can_answer() -> bool
+```
+
+### `enqueue`
+
+```python
+enqueue(
+    row: int,
+    text: str,
+    guess: str | None,
+    confidence: float,
+) -> None
+```
